@@ -26,9 +26,28 @@ def process_voice(request):
         try:
             doc = nlp(voice_text)
             
-
             action = next((token.text for token in doc if token.pos_ == "VERB"), "Task")
-            person = next((ent.text for ent in doc.ents if ent.label_ == "PERSON"), None)
+            
+            recipient = None
+            for ent in doc.ents:
+                if ent.label_ == "PERSON":
+                    recipient = ent.text
+                    break
+            
+
+            if not recipient:
+                group_keywords = ["team", "department", "group", "committee"]
+                for token in doc:
+                    if token.text.lower() in group_keywords and token.dep_ == "dobj":
+                        recipient = "the " + token.text.lower()
+                        break
+            
+
+            if not recipient:
+                for token in doc:
+                    if token.dep_ == "dobj" and token.pos_ == "NOUN":
+                        recipient = token.text
+                        break
             
 
             topic = ""
@@ -55,8 +74,8 @@ def process_voice(request):
             
 
             feedback_message = f"Task created: {action}"
-            if person:
-                feedback_message += f" {person}"
+            if recipient:
+                feedback_message += f" {recipient}"
             if topic:
                 feedback_message += f" about {topic}"
             if deadline:
@@ -66,7 +85,7 @@ def process_voice(request):
                 user="web_user",
                 voice_input=voice_text,
                 action=action,
-                person=person or "",
+                person=recipient or "",  
                 topic=topic or "",
                 deadline=deadline or ""
             )
@@ -75,7 +94,7 @@ def process_voice(request):
                 "status": "success",
                 "data": {
                     "action": action,
-                    "person": person,
+                    "person": recipient,  
                     "topic": topic,
                     "deadline": deadline,
                     "feedback": feedback_message 
@@ -87,8 +106,3 @@ def process_voice(request):
                 "status": "error",
                 "error": f"Error processing voice command: {str(e)}"
             }, status=500)
-    
-    return JsonResponse(
-        {"status": "error", "error": "This endpoint only accepts POST requests with 'voice_text' parameter"},
-        status=400
-    )
