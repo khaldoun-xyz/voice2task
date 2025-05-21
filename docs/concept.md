@@ -30,7 +30,7 @@ Confirmation:	Displays task preview and success message to user
 - Supports only 1–2 sentence structures:
 e.g., "[Action] [Person] about [Topic] by [Date]"
 - No complex sentence support
-- Assumes English only
+- Assumes English/ German only
 - No support for recurring tasks or priorities yet
 
 🧰 3. Tools & Stack
