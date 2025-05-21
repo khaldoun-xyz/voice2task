@@ -16,15 +16,15 @@ A Django application that converts voice commands into structured tasks using na
 - Modern web browser (Chrome/Edge recommended)
 
 
-1. Create and activate virtual environment
-     python -m venv venv
+1. Create and activate virtual environment: 
+   python -m venv venv
    - Activate the virtual environment:(On macOS/Linux):
-       source venv/bin/activate
-2. Install dependencies
+     source venv/bin/activate
+3. Install dependencies
 pip install -r requirements.txt
 python -m spacy download en_core_web_sm
-3. Set up database
+4. Set up database
 python manage.py makemigrations
 python manage.py migrate
-4. Run development server
+5. Run development server
 python manage.py runserver
