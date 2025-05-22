@@ -1,55 +1,96 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Voice-to-Task</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 600px;
             margin: 0 auto;
             padding: 20px;
+            background-color: #f4f7fa;
+            color: #333;
         }
-        button {
-            padding: 10px 20px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
+        h1 {
+            text-align: center;
+            color: #0052cc;
             margin-bottom: 10px;
         }
+        p {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #555;
+        }
+        label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            display: block;
+            color: #444;
+        }
+        select, button {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 15px;
+            font-size: 16px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            transition: border-color 0.3s;
+        }
+        select:focus, button:focus {
+            border-color: #0052cc;
+            outline: none;
+        }
+        button {
+            background-color: #0052cc;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
         button:disabled {
-            background-color: #cccccc;
+            background-color: #a9c0ff;
+            cursor: not-allowed;
         }
         #result {
             margin-top: 20px;
-            padding: 10px;
+            padding: 15px;
             border: 1px solid #ddd;
-            border-radius: 4px;
+            border-radius: 5px;
+            background-color: #fff;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
             min-height: 100px;
-            background-color: #f9f9f9;
         }
         #interimResult {
             color: #666;
             font-style: italic;
             margin: 10px 0;
             min-height: 20px;
+            text-align: center;
         }
         .task-detail {
             margin: 5px 0;
             padding: 5px;
-            background-color: #f0f0f0;
+            background-color: #e9f5ff;
             border-radius: 3px;
         }
         .error {
             color: #d9534f;
+            text-align: center;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
     <h1>Voice-to-Task</h1>
     <p>Click the button and say something like: "Call Mr. X about Topic Y by Date Z"</p>
+    
+    <label for="languageSelect">Select Language:</label>
+    <select id="languageSelect">
+        <option value="en-US">English (US)</option>
+        <option value="de-DE">German</option>
+    </select>
     
     <button id="recordButton">Start Recording</button>
     <div id="interimResult"></div>
@@ -59,15 +100,16 @@
         const recordButton = document.getElementById('recordButton');
         const resultDiv = document.getElementById('result');
         const interimResultDiv = document.getElementById('interimResult');
-        
-        if (!('webkitSpeechRecognition' in window)) {
+        const languageSelect = document.getElementById('languageSelect');
+
+        if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
             resultDiv.innerHTML = '<p class="error">Speech recognition is not supported in this browser. Please try Chrome or Edge.</p>';
             recordButton.disabled = true;
         } else {
             const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
             recognition.continuous = false;
             recognition.interimResults = true;
-            recognition.lang = 'en-US';
+            recognition.lang = languageSelect.value; 
             recognition.maxAlternatives = 3;
 
             // Add speech adaptation for your domain
@@ -83,6 +125,7 @@
             let isProcessing = false;
             
             recordButton.onclick = () => {
+                recognition.lang = languageSelect.value; 
                 if (isProcessing) return;
                 
                 recordButton.disabled = true;
@@ -105,17 +148,14 @@
                     }
                 }
                 
-                // Show interim results while speaking
                 if (interimTranscript) {
                     interimResultDiv.innerHTML = `<p>Recognizing: "${interimTranscript}"</p>`;
                 }
-                
-                // Process final result when done speaking
+
                 if (finalTranscript && !isProcessing) {
                     isProcessing = true;
                     interimResultDiv.innerHTML = `<p>Processing: "${finalTranscript}"</p>`;
                     
-                    // Send to Django backend
                     fetch('/api/process-voice/', {
                         method: 'POST',
                         headers: {
@@ -139,12 +179,13 @@
                                 <div class="task-detail"><strong>Topic:</strong> ${data.data.topic || 'None'}</div>
                                 <div class="task-detail"><strong>Deadline:</strong> ${data.data.deadline || 'None'}</div>
                                 <div class="voice-feedback">"${data.data.feedback}"</div>
+                                <div class="task-detail"><strong>Task type:</strong>${data.data.task_type}</div>
                                 <div class="task-detail"><strong>Original text:</strong> "${finalTranscript}"</div>
                             `;
-                                            // Add voice feedback
+
                             if ('speechSynthesis' in window) {
                                 const feedback = new SpeechSynthesisUtterance(data.data.feedback);
-                                feedback.rate = 0.9;  // Slightly slower than normal
+                                feedback.rate = 0.9;  
                                 window.speechSynthesis.speak(feedback);
                             }
                         } else {
