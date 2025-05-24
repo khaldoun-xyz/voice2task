@@ -1,144 +1,176 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Voice-to-Task</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f4f7fa;
-            color: #333;
-        }
-        h1 {
-            text-align: center;
-            color: #0052cc;
-            margin-bottom: 10px;
-        }
-        p {
-            text-align: center;
-            margin-bottom: 20px;
-            color: #555;
-        }
-        label {
-            font-weight: bold;
-            margin-bottom: 5px;
-            display: block;
-            color: #444;
-        }
-        select, button {
-            width: 100%;
-            padding: 12px;
-            margin-bottom: 15px;
-            font-size: 16px;
-            border-radius: 5px;
-            border: 1px solid #ccc;
-            transition: border-color 0.3s;
-        }
-        select:focus, button:focus {
-            border-color: #0052cc;
-            outline: none;
-        }
-        button {
-            background-color: #0052cc;
-            color: white;
-            border: none;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        button:disabled {
-            background-color: #a9c0ff;
-            cursor: not-allowed;
-        }
-        #result {
-            margin-top: 20px;
-            padding: 15px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            background-color: #fff;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-            min-height: 100px;
-        }
-        #interimResult {
-            color: #666;
-            font-style: italic;
-            margin: 10px 0;
-            min-height: 20px;
-            text-align: center;
-        }
-        .task-detail {
-            margin: 5px 0;
-            padding: 5px;
-            background-color: #e9f5ff;
-            border-radius: 3px;
-        }
-        .error {
-            color: #d9534f;
-            text-align: center;
-            font-weight: bold;
-        }
-    </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TaskFlow - Voice-to-Task Management</title>
+    <link rel="stylesheet" href="/static/home.css">
 </head>
 <body>
-    <h1>Voice-to-Task</h1>
-    <p>Click the button and say something like: "Call Mr. X about Topic Y by Date Z"</p>
-    
-    <label for="languageSelect">Select Language:</label>
-    <select id="languageSelect">
-        <option value="en-US">English (US)</option>
-        <option value="de-DE">German</option>
-    </select>
-    
-    <button id="recordButton">Start Recording</button>
-    <div id="interimResult"></div>
-    <div id="result"></div>
+    <div class="container">
+        <div class="header">
+            <h1>TaskFlow Pro</h1>
+            <p>Transform voice commands into organized workflows for your entire team</p>
+        </div>
+
+        <div class="main-grid">
+            <div class="voice-panel">
+                <h2>🎤 Voice Command Center</h2>
+
+                <select id="languageSelect" class="language-select">
+                    <option value="en-US">🇺🇸 English (US)</option>
+                    <option value="de-DE">🇩🇪 German</option>
+                </select>
+
+                <button id="recordButton" class="record-button">
+                    🎤 Start Voice Command
+                </button>
+
+                <div id="recordingIndicator" class="recording-indicator">
+                    <div class="pulse"></div>
+                    Listening... Speak your command
+                </div>
+
+                <div id="interimResult" class="interim-result">
+                    Click the button above and say something like:<br>
+                    "Call John about project deadline by Friday"
+                </div>
+
+                <div id="taskResult" class="task-result">
+                </div>
+            </div>
+
+            <div class="dashboard-panel">
+                <div class="dashboard-header">
+                    <h2>📊 Team Dashboard</h2>
+                    <div class="filter-tabs">
+                        <a href="?filter=all" class="filter-tab {% if current_filter == 'all' %}active{% endif %}" data-filter="all">All</a>
+                        <a href="?filter=running" class="filter-tab {% if current_filter == 'running' %}active{% endif %}" data-filter="running">Active</a>
+                        <a href="?filter=waiting" class="filter-tab {% if current_filter == 'waiting' %}active{% endif %}" data-filter="waiting">Pending</a>
+                        <a href="?filter=completed" class="filter-tab {% if current_filter == 'completed' %}active{% endif %}" data-filter="completed">Done</a>
+                    </div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-number" id="totalTasks">{{ total_tasks }}</div>
+                        <div class="stat-label">Total Tasks</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="activeTasks">{{ active_tasks }}</div>
+                        <div class="stat-label">Active</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="pendingTasks">{{ pending_tasks }}</div>
+                        <div class="stat-label">Pending</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="completedTasks">{{ completed_tasks }}</div>
+                        <div class="stat-label">Completed</div>
+                    </div>
+                </div>
+
+                <div class="task-list" id="taskList">
+                    {% if recent_tasks %}
+                        {% for task in recent_tasks %}
+                        <div class="task-item priority-medium" onclick="window.location.href='/task/{{ task.id }}/detail/'">
+                            <div class="task-header">
+                                <div class="task-title">{{ task.action|default:"No action specified" }}</div>
+                                <div class="task-status status-{{ task.workflow_status|default:"pending" }}">
+                                    {{ task.workflow_status|default:"pending" }}
+                                </div>
+                            </div>
+                            <div class="task-meta">
+                                {% if task.person %}<span>👤 {{ task.person }}</span>{% endif %}
+                                <span>📋 {{ task.task_type|default:"general" }}</span>
+                                <span>⏰ {{ task.deadline|default:"No deadline" }}</span>
+                            </div>
+                            <div style="color: #666; font-size: 0.9rem;">
+                                {{ task.created_at|date:"M d, Y H:i" }}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="interim-result" style="margin: 0; border: none; background: transparent;">
+                            No tasks yet. Use voice commands to create your first task!
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="workflow-actions">
+            <div class="action-button" onclick="showWorkflowDesigner()">
+                🔧 Workflow Designer
+            </div>
+            <div class="action-button" onclick="showAnalytics()">
+                📈 Analytics & Reports
+            </div>
+            <div class="action-button" onclick="showTeamManagement()">
+                👥 Team Management
+            </div>
+        </div>
+    </div>
 
     <script>
+
         const recordButton = document.getElementById('recordButton');
-        const resultDiv = document.getElementById('result');
-        const interimResultDiv = document.getElementById('interimResult');
+        const interimResult = document.getElementById('interimResult');
+        const taskResult = document.getElementById('taskResult');
+        const recordingIndicator = document.getElementById('recordingIndicator');
         const languageSelect = document.getElementById('languageSelect');
 
-        if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-            resultDiv.innerHTML = '<p class="error">Speech recognition is not supported in this browser. Please try Chrome or Edge.</p>';
-            recordButton.disabled = true;
-        } else {
-            const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-            recognition.continuous = false;
-            recognition.interimResults = true;
-            recognition.lang = languageSelect.value; 
-            recognition.maxAlternatives = 3;
+        let isProcessing = false;
+        let recognition;
 
-            // Add speech adaptation for your domain
-            try {
-                const grammar = '#JSGF V1.0; grammar tasks; public <task> = call | email | meet | create | send;';
-                const speechRecognitionList = new (window.SpeechGrammarList || window.webkitSpeechGrammarList)();
-                speechRecognitionList.addFromString(grammar, 1);
-                recognition.grammars = speechRecognitionList;
-            } catch (e) {
-                console.log('Grammar not supported:', e);
+
+        document.addEventListener('DOMContentLoaded', () => {
+
+            setupVoiceRecognition();
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            const currentFilter = urlParams.get('filter') || 'all';
+            filterTasks(currentFilter);
+        });
+
+        function setupVoiceRecognition() {
+            if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+                interimResult.innerHTML = '❌ Speech recognition not supported. Please use Chrome or Edge.';
+                recordButton.disabled = true;
+                return;
             }
 
-            let isProcessing = false;
-            
-            recordButton.onclick = () => {
-                recognition.lang = languageSelect.value; 
+            recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.continuous = false;
+            recognition.interimResults = true;
+            recognition.lang = languageSelect.value;
+            recognition.maxAlternatives = 3;
+
+            recordButton.addEventListener('click', () => {
                 if (isProcessing) return;
+
+                taskResult.classList.remove('show');
                 
+                recognition.lang = languageSelect.value;
                 recordButton.disabled = true;
-                recordButton.textContent = 'Listening...';
-                resultDiv.innerHTML = '';
-                interimResultDiv.innerHTML = '<p>Listening... Speak now.</p>';
-                recognition.start();
-            };
-            
+                recordButton.textContent = '🔄 Listening...';
+                recordingIndicator.classList.add('active');
+                interimResult.innerHTML = 'Listening... Speak your command now';
+                
+                try {
+                    recognition.start();
+                    console.log('Voice recognition started');
+                } catch (error) {
+                    console.error('Error starting recognition:', error);
+                    interimResult.innerHTML = '❌ Error starting microphone. Please check permissions.';
+                    resetRecordButton();
+                }
+            });
+
             recognition.onresult = (event) => {
                 let interimTranscript = '';
                 let finalTranscript = '';
-                
+
                 for (let i = event.resultIndex; i < event.results.length; i++) {
                     const transcript = event.results[i][0].transcript;
                     if (event.results[i].isFinal) {
@@ -147,76 +179,245 @@
                         interimTranscript += transcript;
                     }
                 }
-                
+
                 if (interimTranscript) {
-                    interimResultDiv.innerHTML = `<p>Recognizing: "${interimTranscript}"</p>`;
+                    interimResult.innerHTML = `🎯 Recognizing: "${interimTranscript}"`;
                 }
 
                 if (finalTranscript && !isProcessing) {
                     isProcessing = true;
-                    interimResultDiv.innerHTML = `<p>Processing: "${finalTranscript}"</p>`;
+                    recordingIndicator.classList.remove('active');
+                    interimResult.innerHTML = `⚡ Processing: "${finalTranscript}"`;
                     
-                    fetch('/api/process-voice/', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                            'X-CSRFToken': '{{ csrf_token }}'
-                        },
-                        body: `voice_text=${encodeURIComponent(finalTranscript)}`
-                    })
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error('Network response was not ok');
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        if (data.status === 'success') {
-                            resultDiv.innerHTML = `
-                                <p><strong>Task created successfully:</strong></p>
-                                <div class="task-detail"><strong>Action:</strong> ${data.data.action}</div>
-                                <div class="task-detail"><strong>Person:</strong> ${data.data.person || 'None'}</div>
-                                <div class="task-detail"><strong>Topic:</strong> ${data.data.topic || 'None'}</div>
-                                <div class="task-detail"><strong>Deadline:</strong> ${data.data.deadline || 'None'}</div>
-                                <div class="voice-feedback">"${data.data.feedback}"</div>
-                                <div class="task-detail"><strong>Task type:</strong>${data.data.task_type}</div>
-                                <div class="task-detail"><strong>Original text:</strong> "${finalTranscript}"</div>
-                            `;
+                    processVoiceCommand(finalTranscript);
+                }
+            };
 
-                            if ('speechSynthesis' in window) {
-                                const feedback = new SpeechSynthesisUtterance(data.data.feedback);
-                                feedback.rate = 0.9;  
-                                window.speechSynthesis.speak(feedback);
-                            }
-                        } else {
-                            resultDiv.innerHTML = `<p class="error">Error: ${data.error || 'Unknown error occurred'}</p>`;
+            recognition.onerror = (event) => {
+                console.error('Recognition error:', event.error);
+                recordingIndicator.classList.remove('active');
+                interimResult.innerHTML = `❌ Error: ${getErrorMessage(event.error)}`;
+                resetRecordButton();
+            };
+
+            recognition.onend = () => {
+                console.log('Recognition ended');
+                recordingIndicator.classList.remove('active');
+                if (!isProcessing) {
+                    resetRecordButton();
+                }
+            };
+
+            languageSelect.addEventListener('change', () => {
+                recognition.lang = languageSelect.value;
+            });
+        }
+
+        function getErrorMessage(errorCode) {
+            const errors = {
+                'no-speech': 'No speech was detected',
+                'audio-capture': 'No microphone was found',
+                'not-allowed': 'Permission to use microphone was denied',
+                'aborted': 'Listening was aborted',
+                'network': 'Network communication failed',
+                'service-not-allowed': 'Microphone access is not allowed',
+                'bad-grammar': 'There was an error in the speech recognition grammar',
+                'language-not-supported': 'Language not supported'
+            };
+            return errors[errorCode] || 'Unknown error occurred';
+        }
+
+        async function processVoiceCommand(voiceText) {
+            try {
+                const response = await fetch('/api/process-voice/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': getCookie('csrftoken') || '',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: `voice_text=${encodeURIComponent(voiceText)}`
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                
+                if (result.error) {
+                    throw new Error(result.error);
+                }
+
+                displayTaskResult(result, voiceText);
+                
+                await updateTaskList();
+                
+                const feedbackText = result.data?.feedback || result.feedback;
+                if ('speechSynthesis' in window && feedbackText) {
+                    const utterance = new SpeechSynthesisUtterance(feedbackText);
+                    utterance.rate = 0.9;
+                    speechSynthesis.speak(utterance);
+                }
+            } catch (error) {
+                console.error('Error processing voice command:', error);
+                interimResult.innerHTML = `❌ Error: ${error.message}`;
+            } finally {
+                resetRecordButton();
+            }
+        }
+
+        function resetRecordButton() {
+            recordButton.disabled = false;
+            recordButton.textContent = '🎤 Start Voice Command';
+            isProcessing = false;
+        }
+
+        function displayTaskResult(result, originalText) {
+
+            const taskData = result.data || result;
+            const status = result.status || 'success';
+            
+            if (status === 'success') {
+                taskResult.innerHTML = `
+                    <h3>✅ Task Created Successfully!</h3>
+                    <div class="task-detail"><strong>Action:</strong> ${taskData.action || 'No action specified'}</div>
+                    <div class="task-detail"><strong>Person:</strong> ${taskData.person || 'None'}</div>
+                    <div class="task-detail"><strong>Topic:</strong> ${taskData.topic || 'None'}</div>
+                    <div class="task-detail"><strong>Deadline:</strong> ${taskData.deadline || 'None'}</div>
+                    <div class="task-detail" style="background: rgba(255, 255, 255, 0.3); margin: 10px 0; padding: 15px; border-radius: 8px; font-style: italic;">
+                        "${taskData.feedback || 'Task created successfully!'}"
+                    </div>
+                    <div class="task-detail"><strong>Task type:</strong> ${taskData.task_type || 'general'}</div>
+                    <div class="task-detail"><strong>Original text:</strong> "${originalText || 'Not available'}"</div>
+                    ${taskData.workflow_id ? `<div class="task-detail"><strong>Workflow ID:</strong> ${taskData.workflow_id}</div>` : ''}
+                `;
+                taskResult.classList.add('show');
+                interimResult.innerHTML = `🎉 ${taskData.feedback || 'Task created successfully!'}`;
+            } else {
+                taskResult.innerHTML = `
+                    <h3>❌ Error Creating Task</h3>
+                    <div class="task-detail" style="color: #e74c3c;">
+                        <strong>Error:</strong> ${result.error || 'Unknown error occurred'}
+                    </div>
+                `;
+                taskResult.classList.add('show');
+                interimResult.innerHTML = `❌ Error: ${result.error || 'Failed to create task'}`;
+            }
+        }
+
+        async function updateTaskList() {
+            try {
+                const response = await fetch(window.location.pathname + window.location.search, {
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                
+                if (response.ok) {
+                    const html = await response.text();
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    
+
+                    const newTaskList = doc.getElementById('taskList');
+                    const currentTaskList = document.getElementById('taskList');
+                    if (newTaskList && currentTaskList) {
+                        currentTaskList.innerHTML = newTaskList.innerHTML;
+                    }
+
+                    const stats = ['totalTasks', 'activeTasks', 'pendingTasks', 'completedTasks'];
+                    stats.forEach(statId => {
+                        const newStat = doc.getElementById(statId);
+                        const currentStat = document.getElementById(statId);
+                        if (newStat && currentStat) {
+                            currentStat.textContent = newStat.textContent;
                         }
-                    })
-                    .catch(error => {
-                        resultDiv.innerHTML = `<p class="error">Error: ${error.message || 'Failed to process request'}</p>`;
-                    })
-                    .finally(() => {
-                        isProcessing = false;
-                        recordButton.disabled = false;
-                        recordButton.textContent = 'Start Recording';
-                        interimResultDiv.innerHTML = '';
                     });
                 }
-            };
-            
-            recognition.onerror = (event) => {
-                interimResultDiv.innerHTML = `<p class="error">Error: ${event.error}</p>`;
-                recordButton.disabled = false;
-                recordButton.textContent = 'Start Recording';
-                isProcessing = false;
-            };
-            
-            recognition.onend = () => {
-                if (!isProcessing) {
-                    interimResultDiv.innerHTML = '';
-                }
-            };
+            } catch (error) {
+                console.error('Error updating task list:', error);
+
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            }
         }
+
+        function filterTasks(filter) {
+            const taskItems = document.querySelectorAll('.task-item');
+            const filterTabs = document.querySelectorAll('.filter-tab');
+            
+            filterTabs.forEach(tab => {
+                tab.classList.remove('active');
+                if (tab.dataset.filter === filter) {
+                    tab.classList.add('active');
+                }
+            });
+
+            taskItems.forEach(item => {
+                const status = item.querySelector('.task-status');
+                if (!status) return;
+                
+                const statusClass = status.className;
+                let shouldShow = false;
+                
+                switch (filter) {
+                    case 'all':
+                        shouldShow = true;
+                        break;
+                    case 'running':
+                        shouldShow = statusClass.includes('status-running');
+                        break;
+                    case 'waiting':
+                        shouldShow = statusClass.includes('status-waiting') || statusClass.includes('status-pending');
+                        break;
+                    case 'completed':
+                        shouldShow = statusClass.includes('status-completed');
+                        break;
+                }
+                
+                item.style.display = shouldShow ? 'block' : 'none';
+            });
+        }
+
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        function showWorkflowDesigner() {
+            alert('🔧 Workflow Designer\n\nThis would open your SpiffArena interface or custom workflow designer where business users can:\n• Design custom workflows\n• Set approval processes\n• Configure automation rules\n• Manage business logic');
+        }
+
+        function showAnalytics() {
+            alert('📈 Analytics & Reports\n\nThis would show:\n• Task completion rates\n• Team performance metrics\n• Workflow efficiency\n• Voice command accuracy\n• Business insights');
+        }
+
+        function showTeamManagement() {
+            alert('👥 Team Management\n\nThis would allow:\n• User role management\n• Team assignments\n• Permission settings\n• Department configuration\n• Integration with HR systems');
+        }
+
+        function toggleVoicePanel() {
+            const voicePanel = document.querySelector('.voice-panel');
+            voicePanel.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        window.showWorkflowDesigner = showWorkflowDesigner;
+        window.showAnalytics = showAnalytics;
+        window.showTeamManagement = showTeamManagement;
+        window.toggleVoicePanel = toggleVoicePanel;
+        window.filterTasks = filterTasks;
     </script>
 </body>
 </html>

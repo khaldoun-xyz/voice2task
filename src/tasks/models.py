@@ -30,6 +30,10 @@ class Task(models.Model):
     deadline = models.CharField(max_length=100, blank=True)
     language = models.CharField(max_length=2, choices=LANGUAGE_CHOICES, default='en')
     created_at = models.DateTimeField(default=timezone.now)
+    workflow_id = models.CharField(max_length=100, blank=True, null=True)
+    workflow_status = models.CharField(max_length=50, default='pending')
+    assigned_to = models.CharField(max_length=100, blank=True)
+    priority = models.CharField(max_length=20, default='medium')
     
     def __str__(self):
         return f"{self.action} - {self.person} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"

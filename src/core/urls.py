@@ -17,10 +17,23 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path
-from tasks.views import home, process_voice
+from tasks.views import (
+    home, 
+    process_voice, 
+    workflow_status, 
+    complete_workflow_task_view,
+    task_list,
+    task_detail,
+    update_task
+)
 
 urlpatterns = [
     path('', home, name='home'),
     path("admin/", admin.site.urls),
     path('api/process-voice/', process_voice, name='process_voice'),
+    path('api/workflow/<str:workflow_id>/status/', workflow_status, name='workflow_status'),
+    path('api/workflow/<str:workflow_id>/task/<str:task_name>/complete/', complete_workflow_task_view, name='complete_workflow_task'),
+    path('tasks/', task_list, name='task_list'),
+    path('task/<int:task_id>/', update_task, name='update_task'),
+    path('task/<int:task_id>/detail/', task_detail, name='task_detail'),
 ]
