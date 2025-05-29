@@ -3,10 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Task Detail - TaskFlow Pro</title>
+    <title>Task Detail - TaskFlow</title>
     <link rel="stylesheet" href="/static/home.css">
 </head>
-<body>
 <body>
     <div class="container">
         <div class="header">
@@ -31,7 +30,7 @@
                 </div>
 
                 <div class="original-voice">
-                    <h3>🎤 Original Voice Command</h3>
+                    <h3>🎤 Original Voice/Text Command</h3>
                     <div class="voice-text">
                         "{{ task.voice_input|default:"No voice input recorded" }}"
                     </div>
@@ -53,6 +52,20 @@
                     <div class="detail-item">
                         <div class="detail-label">Topic/Subject</div>
                         <div class="detail-value">{{ task.topic|default:"Not specified" }}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Assigned To</div>
+                        <div class="detail-value">{{ task.assigned_to|default:"Not assigned" }}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Priority</div>
+                        <div class="detail-value priority-{{ task.priority|default:'medium' }}">
+                            {% if task.priority == 'high' %}🔴 High
+                            {% elif task.priority == 'medium' %}🟡 Medium
+                            {% elif task.priority == 'low' %}🟢 Low
+                            {% else %}🟡 Medium
+                            {% endif %}
+                        </div>
                     </div>
                     <div class="detail-item">
                         <div class="detail-label">Deadline</div>
@@ -79,10 +92,60 @@
                     <button class="action-button" onclick="updateTaskStatus('running')">
                         ▶️ Set Active
                     </button>
+                    <button class="action-button" onclick="updateTaskStatus('failed')">
+                        ❌ Mark Failed
+                    </button>
                     <a href="/tasks/" class="action-button">
                         📋 All Tasks
                     </a>
                 </div>
+
+                <div class="task-management">
+                    <h3>📝 Task Management</h3>
+                    <div class="management-grid">
+                        <div class="management-item">
+                            <label for="assigned-to">Assign To:</label>
+                            <input type="text" id="assigned-to" value="{{ task.assigned_to|default:'' }}" placeholder="Enter assignee name">
+                            <button onclick="updateTaskField('assigned_to', document.getElementById('assigned-to').value)">Update</button>
+                        </div>
+                        <div class="management-item">
+                            <label for="priority">Priority:</label>
+                            <select id="priority">
+                                <option value="low" {% if task.priority == 'low' %}selected{% endif %}>🟢 Low</option>
+                                <option value="medium" {% if task.priority == 'medium' or not task.priority %}selected{% endif %}>🟡 Medium</option>
+                                <option value="high" {% if task.priority == 'high' %}selected{% endif %}>🔴 High</option>
+                            </select>
+                            <button onclick="updateTaskField('priority', document.getElementById('priority').value)">Update</button>
+                        </div>
+                        <div class="management-item">
+                            <label for="deadline">Deadline:</label>
+                            <input type="datetime-local" id="deadline" value="{{ task.deadline|date:'Y-m-d\TH:i' }}">
+                            <button onclick="updateTaskField('deadline', document.getElementById('deadline').value)">Update</button>
+                        </div>
+                    </div>
+                </div>
+
+                {% if analysis %}
+                <div class="analysis-section">
+                    <h3>🔍 Task Analysis</h3>
+                    <div class="analysis-content">
+                        <div class="analysis-item">
+                            <strong>Cleaned Text:</strong>
+                            <p>"{{ analysis.cleaned_text }}"</p>
+                        </div>
+                        {% if analysis.nlp_entities %}
+                        <div class="analysis-item">
+                            <strong>Detected Entities:</strong>
+                            <div class="entities">
+                                {% for entity in analysis.nlp_entities %}
+                                <span class="entity entity-{{ entity.label|lower }}">{{ entity.text }} ({{ entity.label }})</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
             </div>
 
             <div class="workflow-panel">
@@ -106,7 +169,7 @@
                     <h4 style="margin-bottom: 15px; color: #333;">Workflow Steps:</h4>
                     <div class="workflow-step completed">
                         <div class="step-title">✅ Task Created</div>
-                        <div class="step-description">Voice command processed and task extracted</div>
+                        <div class="step-description">Voice or Text command processed and task extracted</div>
                     </div>
                     <div class="workflow-step active">
                         <div class="step-title">⚡ Processing</div>
@@ -211,6 +274,53 @@
             }
         }
 
+        async function updateTaskField(fieldName, fieldValue) {
+            try {
+                const response = await fetch(`/task/{{ task.id }}/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken') || ''
+                    },
+                    body: JSON.stringify({
+                        [fieldName]: fieldValue
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    showNotification(`${fieldName.replace('_', ' ')} updated successfully`, 'success');
+                    const displayElement = document.querySelector(`[data-field="${fieldName}"]`);
+                    if (displayElement) {
+                        displayElement.textContent = fieldValue || 'Not specified';
+                    }
+
+                    if (fieldName === 'priority') {
+                        const priorityElement = document.querySelector('.detail-value.priority-high, .detail-value.priority-medium, .detail-value.priority-low');
+                        if (priorityElement) {
+                            priorityElement.className = `detail-value priority-${fieldValue}`;
+                            const priorityText = {
+                                'high': '🔴 High',
+                                'medium': '🟡 Medium',
+                                'low': '🟢 Low'
+                            };
+                            priorityElement.textContent = priorityText[fieldValue] || '🟡 Medium';
+                        }
+                    }
+                } else {
+                    showNotification(result.message || `Failed to update ${fieldName}`, 'error');
+                }
+            } catch (error) {
+                console.error(`Error updating ${fieldName}:`, error);
+                showNotification(`Error updating ${fieldName}`, 'error');
+            }
+        }
+
         function getCookie(name) {
             let cookieValue = null;
             if (document.cookie && document.cookie !== '') {
@@ -261,19 +371,6 @@
             }, 3000);
         }
 
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes slideIn {
-                from { transform: translateX(100%); opacity: 0; }
-                to { transform: translateX(0); opacity: 1; }
-            }
-            @keyframes slideOut {
-                from { transform: translateX(0); opacity: 1; }
-                to { transform: translateX(100%); opacity: 0; }
-            }
-        `;
-        document.head.appendChild(style);
-
         async function refreshWorkflowStatus() {
             {% if task.workflow_id %}
             try {
@@ -282,8 +379,6 @@
                 
                 showNotification('Workflow status refreshed', 'success');
                 console.log('Workflow status:', status);
-                
-
                 setTimeout(() => {
                     window.location.reload();
                 }, 1000);

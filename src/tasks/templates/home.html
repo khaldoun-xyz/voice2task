@@ -3,37 +3,64 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TaskFlow - Voice-to-Task Management</title>
+    <title>TaskFlow - Voice/Text-to-Task Management</title>
     <link rel="stylesheet" href="/static/home.css">
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>TaskFlow Pro</h1>
-            <p>Transform voice commands into organized workflows for your entire team</p>
+            <h1>TaskFlow</h1>
+            <p>Transform voice commands or text into organized workflows for your entire team</p>
         </div>
 
         <div class="main-grid">
             <div class="voice-panel">
-                <h2>🎤 Voice Command Center</h2>
+                <h2>🎤 Task Input Center</h2>
 
                 <select id="languageSelect" class="language-select">
                     <option value="en-US">🇺🇸 English (US)</option>
                     <option value="de-DE">🇩🇪 German</option>
                 </select>
 
-                <button id="recordButton" class="record-button">
-                    🎤 Start Voice Command
-                </button>
-
-                <div id="recordingIndicator" class="recording-indicator">
-                    <div class="pulse"></div>
-                    Listening... Speak your command
+                <div class="input-mode-toggle">
+                    <div class="mode-option active" id="voiceMode" onclick="switchInputMode('voice')">
+                        🎤 Voice Command
+                    </div>
+                    <div class="mode-option" id="textMode" onclick="switchInputMode('text')">
+                        ✍️ Text Input
+                    </div>
                 </div>
 
-                <div id="interimResult" class="interim-result">
-                    Click the button above and say something like:<br>
-                    "Call John about project deadline by Friday"
+                <div class="voice-section active" id="voiceSection">
+                    <button id="recordButton" class="record-button">
+                        🎤 Start Voice Command
+                    </button>
+
+                    <div id="recordingIndicator" class="recording-indicator">
+                        <div class="pulse"></div>
+                        Listening... Speak your command
+                    </div>
+
+                    <div id="interimResult" class="interim-result">
+                        Click the button above and say something like:<br>
+                        "Call John about project deadline by Friday"
+                    </div>
+                </div>
+
+                <div class="text-input-section" id="textSection">
+                    <textarea 
+                        id="taskTextarea" 
+                        class="task-textarea" 
+                        placeholder="Type your task here... 
+
+For example:
+• Call John about project deadline by Friday
+• Send email to Sarah regarding budget review by tomorrow"
+                    ></textarea>
+                    
+                    <button id="submitButton" class="submit-button">
+                        ✍️ Create Task from Text
+                    </button>
                 </div>
 
                 <div id="taskResult" class="task-result">
@@ -92,7 +119,7 @@
                         {% endfor %}
                     {% else %}
                         <div class="interim-result" style="margin: 0; border: none; background: transparent;">
-                            No tasks yet. Use voice commands to create your first task!
+                            No tasks yet. Use voice commands or text input to create your first task!
                         </div>
                     {% endif %}
                 </div>
@@ -113,29 +140,101 @@
     </div>
 
     <script>
-
         const recordButton = document.getElementById('recordButton');
         const interimResult = document.getElementById('interimResult');
         const taskResult = document.getElementById('taskResult');
         const recordingIndicator = document.getElementById('recordingIndicator');
         const languageSelect = document.getElementById('languageSelect');
+        
+        const taskTextarea = document.getElementById('taskTextarea');
+        const submitButton = document.getElementById('submitButton');
+        const voiceSection = document.getElementById('voiceSection');
+        const textSection = document.getElementById('textSection');
+        const voiceModeBtn = document.getElementById('voiceMode');
+        const textModeBtn = document.getElementById('textMode');
 
         let isProcessing = false;
         let recognition;
-
+        let currentInputMode = 'voice';
 
         document.addEventListener('DOMContentLoaded', () => {
-
             setupVoiceRecognition();
+            setupTextInput();
             
             const urlParams = new URLSearchParams(window.location.search);
             const currentFilter = urlParams.get('filter') || 'all';
             filterTasks(currentFilter);
         });
 
+        function switchInputMode(mode) {
+            currentInputMode = mode;
+            
+            voiceModeBtn.classList.toggle('active', mode === 'voice');
+            textModeBtn.classList.toggle('active', mode === 'text');
+            
+            // Show/hide sections
+            voiceSection.classList.toggle('active', mode === 'voice');
+            textSection.classList.toggle('active', mode === 'text');
+
+            taskResult.classList.remove('show');
+            
+            if (mode === 'voice') {
+                interimResult.innerHTML = 'Click the button above and say something like:<br>"Call John about project deadline by Friday"';
+            } else {
+                if (taskTextarea.value.trim()) {
+                    taskTextarea.focus();
+                }
+            }
+        }
+
+
+        function setupTextInput() {
+            submitButton.addEventListener('click', handleTextSubmit);
+
+            taskTextarea.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleTextSubmit();
+                }
+            });
+
+            taskTextarea.addEventListener('input', () => {
+                taskTextarea.style.height = 'auto';
+                taskTextarea.style.height = Math.max(120, taskTextarea.scrollHeight) + 'px';
+            });
+        }
+
+        async function handleTextSubmit() {
+            const textInput = taskTextarea.value.trim();
+            
+            if (!textInput) {
+                alert('Please enter a task description');
+                return;
+            }
+            
+            if (isProcessing) return;
+            
+            isProcessing = true;
+            submitButton.disabled = true;
+            submitButton.textContent = '⚡ Processing...';
+            taskResult.classList.remove('show');
+            
+            try {
+                await processVoiceCommand(textInput);
+                taskTextarea.value = '';
+                taskTextarea.style.height = '120px';
+            } catch (error) {
+                console.error('Error processing text input:', error);
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = '✍️ Create Task from Text';
+                isProcessing = false;
+            }
+        }
+
         function setupVoiceRecognition() {
             if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-                interimResult.innerHTML = '❌ Speech recognition not supported. Please use Chrome or Edge.';
+                interimResult.innerHTML = '❌ Speech recognition not supported. Please use Chrome or Edge, or try the text input option.';
                 recordButton.disabled = true;
                 return;
             }
@@ -162,7 +261,7 @@
                     console.log('Voice recognition started');
                 } catch (error) {
                     console.error('Error starting recognition:', error);
-                    interimResult.innerHTML = '❌ Error starting microphone. Please check permissions.';
+                    interimResult.innerHTML = '❌ Error starting microphone. Please check permissions or try text input.';
                     resetRecordButton();
                 }
             });
@@ -236,7 +335,7 @@
                         'X-CSRFToken': getCookie('csrftoken') || '',
                         'X-Requested-With': 'XMLHttpRequest'
                     },
-                    body: `voice_text=${encodeURIComponent(voiceText)}`
+                    body: `voice_text=${encodeURIComponent(voiceText)}&language=${encodeURIComponent(languageSelect.value)}`
                 });
 
                 if (!response.ok) {
@@ -254,16 +353,23 @@
                 await updateTaskList();
                 
                 const feedbackText = result.data?.feedback || result.feedback;
-                if ('speechSynthesis' in window && feedbackText) {
+                if ('speechSynthesis' in window && feedbackText && currentInputMode === 'voice') {
                     const utterance = new SpeechSynthesisUtterance(feedbackText);
                     utterance.rate = 0.9;
+                    utterance.lang = languageSelect.value;
                     speechSynthesis.speak(utterance);
                 }
             } catch (error) {
-                console.error('Error processing voice command:', error);
-                interimResult.innerHTML = `❌ Error: ${error.message}`;
+                console.error('Error processing command:', error);
+                if (currentInputMode === 'voice') {
+                    interimResult.innerHTML = `❌ Error: ${error.message}`;
+                } else {
+                    alert(`Error: ${error.message}`);
+                }
             } finally {
-                resetRecordButton();
+                if (currentInputMode === 'voice') {
+                    resetRecordButton();
+                }
             }
         }
 
@@ -274,7 +380,6 @@
         }
 
         function displayTaskResult(result, originalText) {
-
             const taskData = result.data || result;
             const status = result.status || 'success';
             
@@ -290,10 +395,15 @@
                     </div>
                     <div class="task-detail"><strong>Task type:</strong> ${taskData.task_type || 'general'}</div>
                     <div class="task-detail"><strong>Original text:</strong> "${originalText || 'Not available'}"</div>
+                    <div class="task-detail"><strong>Input method:</strong> ${currentInputMode === 'voice' ? '🎤 Voice Command' : '✍️ Text Input'}</div>
+                    <div class="task-detail"><strong>Language:</strong> ${languageSelect.options[languageSelect.selectedIndex].text}</div>
                     ${taskData.workflow_id ? `<div class="task-detail"><strong>Workflow ID:</strong> ${taskData.workflow_id}</div>` : ''}
                 `;
                 taskResult.classList.add('show');
-                interimResult.innerHTML = `🎉 ${taskData.feedback || 'Task created successfully!'}`;
+                
+                if (currentInputMode === 'voice') {
+                    interimResult.innerHTML = `🎉 ${taskData.feedback || 'Task created successfully!'}`;
+                }
             } else {
                 taskResult.innerHTML = `
                     <h3>❌ Error Creating Task</h3>
@@ -302,7 +412,10 @@
                     </div>
                 `;
                 taskResult.classList.add('show');
-                interimResult.innerHTML = `❌ Error: ${result.error || 'Failed to create task'}`;
+                
+                if (currentInputMode === 'voice') {
+                    interimResult.innerHTML = `❌ Error: ${result.error || 'Failed to create task'}`;
+                }
             }
         }
 
@@ -418,6 +531,7 @@
         window.showTeamManagement = showTeamManagement;
         window.toggleVoicePanel = toggleVoicePanel;
         window.filterTasks = filterTasks;
+        window.switchInputMode = switchInputMode;
     </script>
 </body>
 </html>

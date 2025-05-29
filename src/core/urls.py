@@ -24,7 +24,13 @@ from tasks.views import (
     complete_workflow_task_view,
     task_list,
     task_detail,
-    update_task
+    update_task,
+    analyze_voice_text,
+    detect_language,
+    extract_task_components,
+    bulk_process_tasks,
+    get_task_statistics,
+    analyze_voice_text
 )
 
 urlpatterns = [
@@ -36,4 +42,10 @@ urlpatterns = [
     path('tasks/', task_list, name='task_list'),
     path('task/<int:task_id>/', update_task, name='update_task'),
     path('task/<int:task_id>/detail/', task_detail, name='task_detail'),
+    
+    path('analyze-text/',analyze_voice_text, name='analyze_voice_text'),
+    path('detect-language/', detect_language, name='detect_language'),
+    path('extract-components/', extract_task_components, name='extract_task_components'),
+    path('bulk-process/', bulk_process_tasks, name='bulk_process_tasks'),
+    path('statistics/', get_task_statistics, name='task_statistics'),
 ]

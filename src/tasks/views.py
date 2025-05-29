@@ -6,7 +6,16 @@ import json
 import logging
 from .models import Task
 from .simple_workflow import create_workflow, get_workflow_status, complete_workflow_task
-from .task_extractor import extract_task_from_text
+from .task_extractor import (
+    extract_task_from_text,
+    TaskExtractor, 
+    TaskComponents,
+    LanguageDetector,
+    NLPProcessor,
+    InsuranceTaskHandler,
+    generate_feedback_message,
+    format_task_for_database
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +57,7 @@ def _extract_voice_text(request):
             body_data = parse_qs(request.body.decode('utf-8'))
             voice_text = body_data.get('voice_text', [''])[0]
     
-    return voice_text
+    return voice_text.strip()
 
 def _create_task_dict(task):
     return {
@@ -60,6 +69,9 @@ def _create_task_dict(task):
         'deadline': task.deadline,
         'language': task.language,
         'voice_input': task.voice_input,
+        'workflow_status': task.workflow_status,
+        'assigned_to': task.assigned_to,
+        'priority': task.priority,
         'created_at': task.created_at.isoformat()
     }
 
@@ -106,16 +118,24 @@ def process_voice(request):
             language=task_data['language']
         )
         task.save()
-        
 
+        task_components = TaskComponents(
+            action=task_data['action'],
+            person=task_data['person'],
+            topic=task_data['topic'],
+            deadline=task_data['deadline'],
+            language=task_data['language'],
+            task_type=task_data['task_type']
+        )
+
+        feedback_message = generate_feedback_message(task_components)
+        
         task_dict = _create_task_dict(task)
         workflow_id = create_workflow(task_dict)
-        
+
         task.workflow_id = workflow_id
         task.workflow_status = 'running'
         task.save()
-        
-        feedback_message = generate_feedback_message(task_data)
         
         return JsonResponse({
             "status": "success",
@@ -136,6 +156,104 @@ def process_voice(request):
         logger.exception("Unexpected error processing voice input")
         return JsonResponse({"status": "error", "error": f"Unexpected error: {str(e)}"}, status=500)
 
+@csrf_exempt
+def analyze_voice_text(request):
+    if request.method != "POST":
+        return JsonResponse({"status": "error", "message": "Only POST requests are allowed"}, status=405)
+    
+    try:
+        voice_text = _extract_voice_text(request)
+        
+        if not voice_text:
+            return JsonResponse({"status": "error", "message": "No voice text provided"}, status=400)
+
+        language = LanguageDetector.detect_language(voice_text)
+
+        extractor = TaskExtractor(voice_text)
+        task_components = extractor.extract_task()
+
+        enhanced_task = InsuranceTaskHandler.enhance_task(task_components)
+
+        feedback = generate_feedback_message(enhanced_task)
+        
+        return JsonResponse({
+            "status": "success",
+            "analysis": {
+                "original_text": voice_text,
+                "cleaned_text": extractor.cleaned_text,
+                "detected_language": language,
+                "extracted_components": enhanced_task.to_dict(),
+                "feedback_message": feedback
+            }
+        })
+        
+    except Exception as e:
+        logger.exception("Error analyzing voice text")
+        return JsonResponse({"status": "error", "error": f"Analysis error: {str(e)}"}, status=500)
+
+@csrf_exempt
+def detect_language(request):
+    if request.method != "POST":
+        return JsonResponse({"status": "error", "message": "Only POST requests are allowed"}, status=405)
+    
+    try:
+        text = _extract_voice_text(request)
+        
+        if not text:
+            return JsonResponse({"status": "error", "message": "No text provided"}, status=400)
+        
+        detected_language = LanguageDetector.detect_language(text)
+        
+        return JsonResponse({
+            "status": "success",
+            "data": {
+                "text": text,
+                "detected_language": detected_language,
+                "language_name": "German" if detected_language == "de" else "English"
+            }
+        })
+        
+    except Exception as e:
+        logger.exception("Error detecting language")
+        return JsonResponse({"status": "error", "error": f"Language detection error: {str(e)}"}, status=500)
+
+@csrf_exempt
+def extract_task_components(request):
+    if request.method != "POST":
+        return JsonResponse({"status": "error", "message": "Only POST requests are allowed"}, status=405)
+    
+    try:
+        voice_text = _extract_voice_text(request)
+        
+        if not voice_text:
+            return JsonResponse({"status": "error", "message": "No voice text provided"}, status=400)
+        extractor = TaskExtractor(voice_text)
+
+        components = {
+            "original_text": voice_text,
+            "cleaned_text": extractor.cleaned_text,
+            "detected_language": extractor.language,
+            "action": extractor._extract_action(),
+            "person": extractor._extract_person(),
+            "topic": extractor._extract_topic(),
+            "deadline": extractor._extract_deadline(),
+            "nlp_entities": [{"text": ent.text, "label": ent.label_} for ent in extractor.doc.ents]
+        }
+
+        task_type = extractor._determine_task_type(components["action"])
+        components["task_type"] = task_type
+
+        components["standardized_action"] = extractor._standardize_action(components["action"], task_type)
+        
+        return JsonResponse({
+            "status": "success",
+            "components": components
+        })
+        
+    except Exception as e:
+        logger.exception("Error extracting task components")
+        return JsonResponse({"status": "error", "error": f"Component extraction error: {str(e)}"}, status=500)
+
 def workflow_status(request, workflow_id):
     status = get_workflow_status(workflow_id)
     return JsonResponse(status)
@@ -154,32 +272,6 @@ def complete_workflow_task_view(request, workflow_id, task_name):
         logger.error(f"Error completing workflow task: {str(e)}")
         return JsonResponse({"error": str(e)}, status=500)
 
-def generate_feedback_message(task_data):
-    language = task_data['language']
-    action = task_data['action']
-    person = task_data['person']
-    topic = task_data['topic']
-    deadline = task_data['deadline']
-    
-    if language == "en":
-        message = f"Task created: {action}"
-        if person:
-            message += f" with {person}"
-        if topic:
-            message += f" about {topic}"
-        if deadline:
-            message += f" - Due {deadline}"
-    else: 
-        message = f"Aufgabe erstellt: {action}"
-        if person:
-            message += f" mit {person}"
-        if topic:
-            message += f" über {topic}"
-        if deadline:
-            message += f" - Fällig {deadline}"
-    
-    return message
-
 def task_list(request):
     task_filter = request.GET.get('filter', 'all')
     tasks = _get_filtered_tasks(task_filter)
@@ -194,25 +286,42 @@ def task_list(request):
 def task_detail(request, task_id):
     try:
         task = Task.objects.get(id=task_id)
-        workflow_status = None
+        workflow_status_data = None
         if task.workflow_id:
-            workflow_status = get_workflow_status(task.workflow_id)
+            workflow_status_data = get_workflow_status(task.workflow_id)
+        try:
+            extractor = TaskExtractor(task.voice_input)
+            task_components = extractor.extract_task()
+            enhanced_task = InsuranceTaskHandler.enhance_task(task_components)
+            
+            analysis = {
+                "cleaned_text": extractor.cleaned_text,
+                "nlp_entities": [{"text": ent.text, "label": ent.label_} for ent in extractor.doc.ents],
+                "enhanced_components": enhanced_task.to_dict()
+            }
+        except Exception as e:
+            logger.error(f"Error re-analyzing task {task_id}: {str(e)}")
+            analysis = None
+        
         return render(request, 'task_detail.html', {
             'task': task,
-            'workflow_status': workflow_status
+            'workflow_status': workflow_status_data,
+            'analysis': analysis
         })
     except Task.DoesNotExist:
         return render(request, '404.html', status=404)
 
 @csrf_exempt
 def update_task(request, task_id):
+    if request.method != "POST":
+        return JsonResponse({"error": "Only POST allowed"}, status=405)
+    
     try:
         task = Task.objects.get(id=task_id)
         data = json.loads(request.body)
 
         if 'status' in data:
             new_status = data['status']
-            
             task.workflow_status = new_status
             task.save()
 
@@ -222,11 +331,27 @@ def update_task(request, task_id):
                 "new_status": new_status,
                 "workflow_status": task.workflow_status
             })
+        updatable_fields = ['action', 'person', 'topic', 'deadline', 'assigned_to', 'priority']
+        updated_fields = {}
+        
+        for field in updatable_fields:
+            if field in data:
+                setattr(task, field, data[field])
+                updated_fields[field] = data[field]
+        
+        if updated_fields:
+            task.save()
+            return JsonResponse({
+                "status": "success",
+                "task_id": task.id,
+                "updated_fields": updated_fields
+            })
         else:
             return JsonResponse({
                 "status": "error",
-                "message": "No status provided"
+                "message": "No valid fields provided for update"
             }, status=400)
+            
     except Task.DoesNotExist:
         return JsonResponse({
             "status": "error",
@@ -237,4 +362,131 @@ def update_task(request, task_id):
         return JsonResponse({
             "status": "error",
             "message": str(e)
+        }, status=500)
+
+@csrf_exempt  
+def bulk_process_tasks(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Only POST allowed"}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        voice_texts = data.get('voice_texts', [])
+        
+        if not voice_texts or not isinstance(voice_texts, list):
+            return JsonResponse({
+                "status": "error", 
+                "message": "voice_texts must be a non-empty array"
+            }, status=400)
+        
+        results = []
+        
+        for i, voice_text in enumerate(voice_texts):
+            try:
+                task_data = extract_task_from_text(voice_text)
+                
+                if 'error' in task_data:
+                    results.append({
+                        "index": i,
+                        "voice_text": voice_text,
+                        "status": "error",
+                        "error": task_data['error']
+                    })
+                    continue
+
+                task = Task(
+                    user='anonymous',
+                    voice_input=voice_text,
+                    task_type=task_data['task_type'],
+                    action=task_data['action'],
+                    person=task_data['person'],
+                    topic=task_data['topic'],
+                    deadline=task_data['deadline'],
+                    language=task_data['language']
+                )
+                task.save()
+
+                task_dict = _create_task_dict(task)
+                workflow_id = create_workflow(task_dict)
+                
+                task.workflow_id = workflow_id
+                task.workflow_status = 'running'
+                task.save()
+
+                task_components = TaskComponents(**task_data)
+                feedback = generate_feedback_message(task_components)
+                
+                results.append({
+                    "index": i,
+                    "voice_text": voice_text,
+                    "status": "success",
+                    "task_id": task.id,
+                    "task_data": task_data,
+                    "feedback": feedback,
+                    "workflow_id": workflow_id
+                })
+                
+            except Exception as e:
+                results.append({
+                    "index": i,
+                    "voice_text": voice_text,
+                    "status": "error",
+                    "error": str(e)
+                })
+        
+        success_count = sum(1 for r in results if r['status'] == 'success')
+        
+        return JsonResponse({
+            "status": "completed",
+            "total_processed": len(voice_texts),
+            "successful": success_count,
+            "failed": len(voice_texts) - success_count,
+            "results": results
+        })
+        
+    except Exception as e:
+        logger.exception("Error in bulk processing")
+        return JsonResponse({
+            "status": "error", 
+            "error": f"Bulk processing error: {str(e)}"
+         }, status=500)
+
+def get_task_statistics(request):
+    try:
+
+        task_counts = _get_task_counts()
+
+        language_stats = {}
+        for lang_code, lang_name in Task.LANGUAGE_CHOICES:
+            count = Task.objects.filter(language=lang_code).count()
+            language_stats[lang_name] = count
+
+        task_type_stats = {}
+        for type_code, type_name in Task.TASK_TYPES:
+            count = Task.objects.filter(task_type=type_code).count()
+            task_type_stats[type_name] = count
+
+        from datetime import datetime, timedelta
+        from django.utils import timezone
+        
+        week_ago = timezone.now() - timedelta(days=7)
+        recent_tasks = Task.objects.filter(created_at__gte=week_ago).count()
+        
+        return JsonResponse({
+            "status": "success",
+            "statistics": {
+                "task_counts": task_counts,
+                "language_distribution": language_stats,
+                "task_type_distribution": task_type_stats,
+                "recent_activity": {
+                    "last_7_days": recent_tasks
+                }
+            }
+        })
+        
+    except Exception as e:
+        logger.exception("Error getting task statistics")
+        return JsonResponse({
+            "status": "error",
+            "error": f"Statistics error: {str(e)}"
         }, status=500)
