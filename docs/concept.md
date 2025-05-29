@@ -5,14 +5,14 @@ By converting natural language into structured tasks, we eliminate manual data e
 📌 Description
 
 Voice-to-Task is a lightweight prototype that:
-Listens to a user’s spoken command
+- Listens to a user’s spoken command
 (e.g., “Create a task: Call Mr. Schmidt about the damage report by Friday.”)
-Extracts key task elements using NLP:
-- Action
-- Person
-- Topic
-- Deadline
-Pushes the task to a connected system (e.g., Microsoft Planner, CRM, Outlook)
+- Extracts key task elements using NLP:
+    - Action
+    - Person
+    - Topic
+    - Deadline
+- Pushes the task to a connected system (e.g., Microsoft Planner, CRM, Outlook)
 The product is in prototype phase, designed for simplicity and flexibility.
 
 At this stage, it works best with clearly structured sentences to reduce ambiguity.
@@ -30,7 +30,7 @@ Confirmation:	Displays task preview and success message to user
 - Supports only 1–2 sentence structures:
 e.g., "[Action] [Person] about [Topic] by [Date]"
 - No complex sentence support
-- Assumes English only
+- Assumes English/ German only
 - No support for recurring tasks or priorities yet
 
 🧰 3. Tools & Stack

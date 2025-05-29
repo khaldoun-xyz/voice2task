@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
+  <bpmn:process id="general_process" isExecutable="true">
+    <bpmn:startEvent id="start" />
+    <bpmn:sequenceFlow id="flow1" sourceRef="start" targetRef="complete_task" />
+    <bpmn:userTask id="complete_task" name="Complete Task" />
+    <bpmn:sequenceFlow id="flow2" sourceRef="complete_task" targetRef="end" />
+    <bpmn:endEvent id="end" />
+  </bpmn:process>
+</bpmn:definitions>
