@@ -17,6 +17,9 @@ A Django application that converts voice commands into structured tasks using na
 
 
 1. Create and activate virtual environment
+     python -m venv venv
+   - Activate the virtual environment:(On macOS/Linux):
+       source venv/bin/activate
 2. Install dependencies
 pip install -r requirements.txt
 python -m spacy download en_core_web_sm

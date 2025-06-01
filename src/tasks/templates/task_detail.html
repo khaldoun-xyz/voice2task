@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Detail - TaskFlow</title>
+    <link rel="stylesheet" href="/static/home.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📋 Task Detail</h1>
+            <a href="/" class="back-button">← Back to Dashboard</a>
+        </div>
+
+        <div class="main-content">
+            <div class="task-details">
+                <div class="task-header">
+                    <div>
+                        <div class="task-title">{{ task.action|default:"Untitled Task" }}</div>
+                        <div class="task-meta">
+                            <span>🆔 ID: {{ task.id }}</span>
+                            <span>📅 Created: {{ task.created_at|date:"M d, Y H:i" }}</span>
+                            <span>👤 User: {{ task.user|default:"Anonymous" }}</span>
+                        </div>
+                    </div>
+                    <div class="task-status status-{{ task.workflow_status|default:'running' }}">
+                        {{ task.workflow_status|default:"running"|title }}
+                    </div>
+                </div>
+
+                <div class="original-voice">
+                    <h3>🎤 Original Voice/Text Command</h3>
+                    <div class="voice-text">
+                        "{{ task.voice_input|default:"No voice input recorded" }}"
+                    </div>
+                </div>
+
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <div class="detail-label">Task Type</div>
+                        <div class="detail-value">{{ task.task_type|default:"General"|title }}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Action</div>
+                        <div class="detail-value">{{ task.action|default:"No action specified" }}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Person/Contact</div>
+                        <div class="detail-value">{{ task.person|default:"Not specified" }}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Topic/Subject</div>
+                        <div class="detail-value">{{ task.topic|default:"Not specified" }}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Assigned To</div>
+                        <div class="detail-value">{{ task.assigned_to|default:"Not assigned" }}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Priority</div>
+                        <div class="detail-value priority-{{ task.priority|default:'medium' }}">
+                            {% if task.priority == 'high' %}🔴 High
+                            {% elif task.priority == 'medium' %}🟡 Medium
+                            {% elif task.priority == 'low' %}🟢 Low
+                            {% else %}🟡 Medium
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Deadline</div>
+                        <div class="detail-value">{{ task.deadline|default:"No deadline set" }}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Language</div>
+                        <div class="detail-value">
+                            {% if task.language == 'en' %}🇺🇸 English
+                            {% elif task.language == 'de' %}🇩🇪 German
+                            {% else %}{{ task.language|default:"Not specified" }}
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button class="action-button primary" onclick="updateTaskStatus('completed')">
+                        ✅ Mark Complete
+                    </button>
+                    <button class="action-button" onclick="updateTaskStatus('pending')">
+                        ⏸️ Set Pending
+                    </button>
+                    <button class="action-button" onclick="updateTaskStatus('running')">
+                        ▶️ Set Active
+                    </button>
+                    <button class="action-button" onclick="updateTaskStatus('failed')">
+                        ❌ Mark Failed
+                    </button>
+                    <a href="/tasks/" class="action-button">
+                        📋 All Tasks
+                    </a>
+                </div>
+
+                <div class="task-management">
+                    <h3>📝 Task Management</h3>
+                    <div class="management-grid">
+                        <div class="management-item">
+                            <label for="assigned-to">Assign To:</label>
+                            <input type="text" id="assigned-to" value="{{ task.assigned_to|default:'' }}" placeholder="Enter assignee name">
+                            <button onclick="updateTaskField('assigned_to', document.getElementById('assigned-to').value)">Update</button>
+                        </div>
+                        <div class="management-item">
+                            <label for="priority">Priority:</label>
+                            <select id="priority">
+                                <option value="low" {% if task.priority == 'low' %}selected{% endif %}>🟢 Low</option>
+                                <option value="medium" {% if task.priority == 'medium' or not task.priority %}selected{% endif %}>🟡 Medium</option>
+                                <option value="high" {% if task.priority == 'high' %}selected{% endif %}>🔴 High</option>
+                            </select>
+                            <button onclick="updateTaskField('priority', document.getElementById('priority').value)">Update</button>
+                        </div>
+                        <div class="management-item">
+                            <label for="deadline">Deadline:</label>
+                            <input type="datetime-local" id="deadline" value="{{ task.deadline|date:'Y-m-d\TH:i' }}">
+                            <button onclick="updateTaskField('deadline', document.getElementById('deadline').value)">Update</button>
+                        </div>
+                    </div>
+                </div>
+
+                {% if analysis %}
+                <div class="analysis-section">
+                    <h3>🔍 Task Analysis</h3>
+                    <div class="analysis-content">
+                        <div class="analysis-item">
+                            <strong>Cleaned Text:</strong>
+                            <p>"{{ analysis.cleaned_text }}"</p>
+                        </div>
+                        {% if analysis.nlp_entities %}
+                        <div class="analysis-item">
+                            <strong>Detected Entities:</strong>
+                            <div class="entities">
+                                {% for entity in analysis.nlp_entities %}
+                                <span class="entity entity-{{ entity.label|lower }}">{{ entity.text }} ({{ entity.label }})</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="workflow-panel">
+                <div class="workflow-header">
+                    <span>⚙️</span>
+                    <h3>Workflow Status</h3>
+                </div>
+
+                {% if task.workflow_id %}
+                <div class="workflow-id">
+                    <strong>Workflow ID:</strong><br>
+                    {{ task.workflow_id }}
+                </div>
+
+                <div class="workflow-status workflow-{{ task.workflow_status|default:'running' }}">
+                    Status: {{ task.workflow_status|default:"Running"|title }}
+                </div>
+
+                {% if workflow_status %}
+                    <div class="workflow-steps">
+                        <h4 style="margin-bottom: 15px; color: #333;">Workflow Steps:</h4>
+                        
+                        <div class="workflow-step completed">
+                            <div class="step-title">✅ Task Created</div>
+                            <div class="step-description">Voice or Text command processed and task extracted</div>
+                        </div>
+                        
+                        <div class="workflow-step {% if task.workflow_status == 'completed' or task.workflow_status == 'running' %}completed{% endif %}">
+                            <div class="step-title">
+                                {% if task.workflow_status == 'completed' or task.workflow_status == 'running' %}✅{% else %}⚡{% endif %} Processing
+                            </div>
+                            <div class="step-description">
+                                {% if task.workflow_status == 'completed' or task.workflow_status == 'running' %}Task processed successfully
+                                {% elif task.workflow_status == 'failed' %}Task processing failed
+                                {% else %}Workflow engine is processing the task{% endif %}
+                            </div>
+                        </div>
+                        <div class="workflow-step {% if task.workflow_status == 'completed' %}completed{% endif %}">
+                            <div class="step-title">
+                                {% if task.workflow_status == 'completed' %}✅{% else %}📧{% endif %} Notification
+                            </div>
+                            <div class="step-description">
+                                {% if task.workflow_status == 'completed' %}Relevant parties were notified
+                                {% else %}Relevant parties will be notified{% endif %}
+                            </div>
+                        </div>
+                        
+
+                        <div class="workflow-step {% if task.workflow_status == 'completed' %}completed{% endif %}">
+                            <div class="step-title">
+                                {% if task.workflow_status == 'completed' %}✅{% else %}⏳{% endif %} Completion
+                            </div>
+                            <div class="step-description">
+                                {% if task.workflow_status == 'completed' %}Task marked as completed
+                                {% else %}Task will be marked as completed{% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                {% else %}
+                <div class="workflow-status workflow-error">
+                    No workflow associated with this task
+                </div>
+                <p style="color: #666; margin-top: 15px; line-height: 1.6;">
+                    This task was created without a workflow. You can manually manage its status using the action buttons.
+                </p>
+                {% endif %}
+
+                <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #e1e5e9;">
+                    <h4 style="margin-bottom: 15px; color: #333;">Quick Actions:</h4>
+                    <button class="action-button" onclick="refreshWorkflowStatus()" style="width: 100%; margin-bottom: 10px;">
+                        🔄 Refresh Status
+                    </button>
+                    {% if task.workflow_id %}
+                    <button class="action-button" onclick="viewWorkflowDetails()" style="width: 100%;">
+                        📊 View Workflow Details
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function updateTaskStatus(newStatus) {
+            try {
+                const response = await fetch(`/task/{{ task.id }}/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken') || ''
+                    },
+                    body: JSON.stringify({
+                        status: newStatus
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                console.log('Server response:', result);
+
+                if (result.status === 'success') {
+                    showNotification(`Task status updated to: ${newStatus}`, 'success');
+
+                    const statusBadge = document.querySelector('.task-status');
+                    statusBadge.className = `task-status status-${newStatus}`;
+
+                    const statusText = {
+                        'pending': 'Pending',
+                        'running': 'Running',
+                        'completed': 'Completed',
+                        'failed': 'Failed'
+                    };
+
+                    statusBadge.textContent = statusText[newStatus] || newStatus.charAt(0).toUpperCase() + newStatus.slice(1);
+
+                    if (result.workflow_status) {
+                        const workflowStatus = document.querySelector('.workflow-status');
+                        if (workflowStatus) {
+                            workflowStatus.className = `workflow-status workflow-${result.workflow_status}`;
+
+                            const workflowStatusText = {
+                                'running': 'Running',
+                                'completed': 'Completed',
+                                'pending': 'Waiting for User',
+                                'failed': 'Failed'
+                            };
+
+                            const displayText = workflowStatusText[result.workflow_status] ||
+                                            result.workflow_status.charAt(0).toUpperCase() + result.workflow_status.slice(1);
+                            workflowStatus.textContent = `Status: ${displayText}`;
+                        }
+                    }
+
+                    console.log('Task status updated successfully:', result);
+                } else {
+                    showNotification(result.message || 'Failed to update task status', 'error');
+                }
+            } catch (error) {
+                console.error('Error updating task status:', error);
+                showNotification('Error updating task status', 'error');
+            }
+        }
+
+        async function updateTaskField(fieldName, fieldValue) {
+            try {
+                const response = await fetch(`/task/{{ task.id }}/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken') || ''
+                    },
+                    body: JSON.stringify({
+                        [fieldName]: fieldValue
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    showNotification(`${fieldName.replace('_', ' ')} updated successfully`, 'success');
+                    const displayElement = document.querySelector(`[data-field="${fieldName}"]`);
+                    if (displayElement) {
+                        displayElement.textContent = fieldValue || 'Not specified';
+                    }
+
+                    if (fieldName === 'priority') {
+                        const priorityElement = document.querySelector('.detail-value.priority-high, .detail-value.priority-medium, .detail-value.priority-low');
+                        if (priorityElement) {
+                            priorityElement.className = `detail-value priority-${fieldValue}`;
+                            const priorityText = {
+                                'high': '🔴 High',
+                                'medium': '🟡 Medium',
+                                'low': '🟢 Low'
+                            };
+                            priorityElement.textContent = priorityText[fieldValue] || '🟡 Medium';
+                        }
+                    }
+                } else {
+                    showNotification(result.message || `Failed to update ${fieldName}`, 'error');
+                }
+            } catch (error) {
+                console.error(`Error updating ${fieldName}:`, error);
+                showNotification(`Error updating ${fieldName}`, 'error');
+            }
+        }
+
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 15px 20px;
+                border-radius: 8px;
+                color: white;
+                font-weight: 600;
+                z-index: 10000;
+                animation: slideIn 0.3s ease;
+                max-width: 300px;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            `;
+
+            const colors = {
+                success: '#27ae60',
+                error: '#e74c3c',
+                info: '#3498db',
+                warning: '#f39c12'
+            };
+            
+            notification.style.background = colors[type] || colors.info;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => {
+                    document.body.removeChild(notification);
+                }, 300);
+            }, 3000);
+        }
+
+        async function refreshWorkflowStatus() {
+            {% if task.workflow_id %}
+            try {
+                const response = await fetch(`/api/workflow/{{ task.workflow_id }}/status/`);
+                const status = await response.json();
+                
+                showNotification('Workflow status refreshed', 'success');
+                console.log('Workflow status:', status);
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } catch (error) {
+                console.error('Error refreshing workflow status:', error);
+                showNotification('Error refreshing workflow status', 'error');
+            }
+            {% else %}
+            showNotification('No workflow to refresh', 'info');
+            {% endif %}
+        }
+
+        function viewWorkflowDetails() {
+            {% if task.workflow_id %}
+            alert(`Workflow Details:\n\nID: {{ task.workflow_id }}\nStatus: {{ task.workflow_status|default:"Running" }}\nCreated: {{ task.created_at|date:"c" }}\n\nThis would typically show detailed workflow execution logs, step history, and performance metrics.`);
+            {% endif %}
+        }
+    </script>
+</body>
+</html>

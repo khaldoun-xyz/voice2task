@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL">
+  <bpmn:process id="call_process" isExecutable="true">
+    <bpmn:startEvent id="start" />
+    <bpmn:sequenceFlow id="flow1" sourceRef="start" targetRef="auto_validate_task" />
+    
+    <bpmn:serviceTask id="auto_validate_task" name="Validate Task Data" />
+    <bpmn:sequenceFlow id="flow2" sourceRef="auto_validate_task" targetRef="auto_set_priority" />
+    
+    <bpmn:serviceTask id="auto_set_priority" name="Set Priority" />
+    <bpmn:sequenceFlow id="flow3" sourceRef="auto_set_priority" targetRef="auto_assign_user" />
+    
+    <bpmn:serviceTask id="auto_assign_user" name="Assign User" />
+    <bpmn:sequenceFlow id="flow4" sourceRef="auto_assign_user" targetRef="schedule_call" />
+    
+    <bpmn:userTask id="schedule_call" name="Schedule Call">
+      <bpmn:documentation>Schedule the call with the person</bpmn:documentation>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="flow5" sourceRef="schedule_call" targetRef="auto_send_notification" />
+    
+    <bpmn:serviceTask id="auto_send_notification" name="Send Notification" />
+    <bpmn:sequenceFlow id="flow6" sourceRef="auto_send_notification" targetRef="end" />
+    
+    <bpmn:endEvent id="end" />
+  </bpmn:process>
+</bpmn:definitions>
