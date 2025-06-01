@@ -165,26 +165,46 @@
                 </div>
 
                 {% if workflow_status %}
-                <div class="workflow-steps">
-                    <h4 style="margin-bottom: 15px; color: #333;">Workflow Steps:</h4>
-                    <div class="workflow-step completed">
-                        <div class="step-title">✅ Task Created</div>
-                        <div class="step-description">Voice or Text command processed and task extracted</div>
+                    <div class="workflow-steps">
+                        <h4 style="margin-bottom: 15px; color: #333;">Workflow Steps:</h4>
+                        
+                        <div class="workflow-step completed">
+                            <div class="step-title">✅ Task Created</div>
+                            <div class="step-description">Voice or Text command processed and task extracted</div>
+                        </div>
+                        
+                        <div class="workflow-step {% if task.workflow_status == 'completed' or task.workflow_status == 'running' %}completed{% endif %}">
+                            <div class="step-title">
+                                {% if task.workflow_status == 'completed' or task.workflow_status == 'running' %}✅{% else %}⚡{% endif %} Processing
+                            </div>
+                            <div class="step-description">
+                                {% if task.workflow_status == 'completed' or task.workflow_status == 'running' %}Task processed successfully
+                                {% elif task.workflow_status == 'failed' %}Task processing failed
+                                {% else %}Workflow engine is processing the task{% endif %}
+                            </div>
+                        </div>
+                        <div class="workflow-step {% if task.workflow_status == 'completed' %}completed{% endif %}">
+                            <div class="step-title">
+                                {% if task.workflow_status == 'completed' %}✅{% else %}📧{% endif %} Notification
+                            </div>
+                            <div class="step-description">
+                                {% if task.workflow_status == 'completed' %}Relevant parties were notified
+                                {% else %}Relevant parties will be notified{% endif %}
+                            </div>
+                        </div>
+                        
+
+                        <div class="workflow-step {% if task.workflow_status == 'completed' %}completed{% endif %}">
+                            <div class="step-title">
+                                {% if task.workflow_status == 'completed' %}✅{% else %}⏳{% endif %} Completion
+                            </div>
+                            <div class="step-description">
+                                {% if task.workflow_status == 'completed' %}Task marked as completed
+                                {% else %}Task will be marked as completed{% endif %}
+                            </div>
+                        </div>
                     </div>
-                    <div class="workflow-step active">
-                        <div class="step-title">⚡ Processing</div>
-                        <div class="step-description">Workflow engine is processing the task</div>
-                    </div>
-                    <div class="workflow-step">
-                        <div class="step-title">📧 Notification</div>
-                        <div class="step-description">Relevant parties will be notified</div>
-                    </div>
-                    <div class="workflow-step">
-                        <div class="step-title">✅ Completion</div>
-                        <div class="step-description">Task marked as completed</div>
-                    </div>
-                </div>
-                {% endif %}
+                    {% endif %}
 
                 {% else %}
                 <div class="workflow-status workflow-error">

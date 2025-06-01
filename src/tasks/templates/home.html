@@ -100,7 +100,7 @@ For example:
                 <div class="task-list" id="taskList">
                     {% if recent_tasks %}
                         {% for task in recent_tasks %}
-                        <div class="task-item priority-medium" onclick="window.location.href='/task/{{ task.id }}/detail/'">
+                        <div class="task-item priority-{{ task.priority|default:'medium' }}" onclick="window.location.href='/task/{{ task.id }}/detail/'">
                             <div class="task-header">
                                 <div class="task-title">{{ task.action|default:"No action specified" }}</div>
                                 <div class="task-status status-{{ task.workflow_status|default:"pending" }}">
