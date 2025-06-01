@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" 
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  id="automated_calendar_workflow">
+  
+  <!-- Automated Calendar Event Creation Process -->
+  <bpmn:process id="automated_calendar_process" isExecutable="true">
+    
+    <!-- Start Event -->
+    <bpmn:startEvent id="start_event" name="Task Created">
+      <bpmn:outgoing>flow_to_validate</bpmn:outgoing>
+    </bpmn:startEvent>
+    
+    <!-- Validation Service Task -->
+    <bpmn:serviceTask id="validate_task" name="Validate Task Data">
+      <bpmn:incoming>flow_to_validate</bpmn:incoming>
+      <bpmn:outgoing>flow_to_gateway</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <!-- Exclusive Gateway - Check if task needs calendar event -->
+    <bpmn:exclusiveGateway id="calendar_gateway" name="Needs Calendar Event?">
+      <bpmn:incoming>flow_to_gateway</bpmn:incoming>
+      <bpmn:outgoing>flow_to_calendar_create</bpmn:outgoing>
+      <bpmn:outgoing>flow_to_assign</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <!-- Create Calendar Event Service Task -->
+    <bpmn:serviceTask id="create_calendar_event" name="Create Calendar Event">
+      <bpmn:incoming>flow_to_calendar_create</bpmn:incoming>
+      <bpmn:outgoing>flow_calendar_to_check</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <!-- Check Calendar Creation Result -->
+    <bpmn:exclusiveGateway id="calendar_success_gateway" name="Calendar Event Created?">
+      <bpmn:incoming>flow_calendar_to_check</bpmn:incoming>
+      <bpmn:outgoing>flow_calendar_success</bpmn:outgoing>
+      <bpmn:outgoing>flow_calendar_failure</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <!-- Calendar Event Success Path -->
+    <bpmn:serviceTask id="update_task_with_calendar" name="Update Task with Calendar Info">
+      <bpmn:incoming>flow_calendar_success</bpmn:incoming>
+      <bpmn:outgoing>flow_to_priority</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <!-- Calendar Event Failure Path -->
+    <bpmn:serviceTask id="log_calendar_error" name="Log Calendar Error">
+      <bpmn:incoming>flow_calendar_failure</bpmn:incoming>
+      <bpmn:outgoing>flow_error_to_assign</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <!-- Set Priority Service Task -->
+    <bpmn:serviceTask id="set_priority" name="Set Task Priority">
+      <bpmn:incoming>flow_to_priority</bpmn:incoming>
+      <bpmn:incoming>flow_direct_to_priority</bpmn:incoming>
+      <bpmn:outgoing>flow_to_assign_task</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <!-- Assign Task Service Task -->
+    <bpmn:serviceTask id="assign_task" name="Assign Task to Team">
+      <bpmn:incoming>flow_to_assign</bpmn:incoming>
+      <bpmn:incoming>flow_error_to_assign</bpmn:incoming>
+      <bpmn:incoming>flow_to_assign_task</bpmn:incoming>
+      <bpmn:outgoing>flow_to_notify</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <!-- Send Notification Service Task -->
+    <bpmn:serviceTask id="send_notification" name="Send Notification">
+      <bpmn:incoming>flow_to_notify</bpmn:incoming>
+      <bpmn:outgoing>flow_to_completion_check</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <!-- Check if task requires manual completion -->
+    <bpmn:exclusiveGateway id="completion_gateway" name="Requires Manual Action?">
+      <bpmn:incoming>flow_to_completion_check</bpmn:incoming>
+      <bpmn:outgoing>flow_to_manual_task</bpmn:outgoing>
+      <bpmn:outgoing>flow_to_auto_complete</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    
+    <!-- Manual User Task (for tasks that need human intervention) -->
+    <bpmn:userTask id="manual_completion" name="Complete Manual Task">
+      <bpmn:incoming>flow_to_manual_task</bpmn:incoming>
+      <bpmn:outgoing>flow_manual_to_end</bpmn:outgoing>
+    </bpmn:userTask>
+    
+    <!-- Auto Complete Task (for fully automated tasks) -->
+    <bpmn:serviceTask id="auto_complete_task" name="Auto Complete Task">
+      <bpmn:incoming>flow_to_auto_complete</bpmn:incoming>
+      <bpmn:outgoing>flow_auto_to_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    
+    <!-- End Event -->
+    <bpmn:endEvent id="end_event" name="Task Completed">
+      <bpmn:incoming>flow_manual_to_end</bpmn:incoming>
+      <bpmn:incoming>flow_auto_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+    
+    <!-- Sequence Flows -->
+    <bpmn:sequenceFlow id="flow_to_validate" sourceRef="start_event" targetRef="validate_task" />
+    <bpmn:sequenceFlow id="flow_to_gateway" sourceRef="validate_task" targetRef="calendar_gateway" />
+    
+    <!-- Calendar creation path -->
+    <bpmn:sequenceFlow id="flow_to_calendar_create" sourceRef="calendar_gateway" targetRef="create_calendar_event">
+      <bpmn:conditionExpression>task_needs_calendar_event</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    
+    <!-- Direct to assignment path (no calendar needed) -->
+    <bpmn:sequenceFlow id="flow_to_assign" sourceRef="calendar_gateway" targetRef="assign_task">
+      <bpmn:conditionExpression>not task_needs_calendar_event</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    
+    <bpmn:sequenceFlow id="flow_calendar_to_check" sourceRef="create_calendar_event" targetRef="calendar_success_gateway" />
+    
+    <!-- Calendar success/failure paths -->
+    <bpmn:sequenceFlow id="flow_calendar_success" sourceRef="calendar_success_gateway" targetRef="update_task_with_calendar">
+      <bpmn:conditionExpression>calendar_event_created</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    
+    <bpmn:sequenceFlow id="flow_calendar_failure" sourceRef="calendar_success_gateway" targetRef="log_calendar_error">
+      <bpmn:conditionExpression>not calendar_event_created</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    
+    <bpmn:sequenceFlow id="flow_to_priority" sourceRef="update_task_with_calendar" targetRef="set_priority" />
+    <bpmn:sequenceFlow id="flow_error_to_assign" sourceRef="log_calendar_error" targetRef="assign_task" />
+    <bpmn:sequenceFlow id="flow_direct_to_priority" sourceRef="calendar_gateway" targetRef="set_priority">
+      <bpmn:conditionExpression>task_needs_calendar_event and calendar_only</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    
+    <bpmn:sequenceFlow id="flow_to_assign_task" sourceRef="set_priority" targetRef="assign_task" />
+    <bpmn:sequenceFlow id="flow_to_notify" sourceRef="assign_task" targetRef="send_notification" />
+    <bpmn:sequenceFlow id="flow_to_completion_check" sourceRef="send_notification" targetRef="completion_gateway" />
+    
+    <!-- Completion paths -->
+    <bpmn:sequenceFlow id="flow_to_manual_task" sourceRef="completion_gateway" targetRef="manual_completion">
+      <bpmn:conditionExpression>requires_manual_completion</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    
+    <bpmn:sequenceFlow id="flow_to_auto_complete" sourceRef="completion_gateway" targetRef="auto_complete_task">
+      <bpmn:conditionExpression>not requires_manual_completion</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    
+    <bpmn:sequenceFlow id="flow_manual_to_end" sourceRef="manual_completion" targetRef="end_event" />
+    <bpmn:sequenceFlow id="flow_auto_to_end" sourceRef="auto_complete_task" targetRef="end_event" />
+    
+  </bpmn:process>
+</bpmn:definitions>

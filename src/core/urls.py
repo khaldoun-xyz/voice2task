@@ -30,7 +30,7 @@ from tasks.views import (
     extract_task_components,
     bulk_process_tasks,
     get_task_statistics,
-    analyze_voice_text
+    analyze_voice_text, calendar_operations
 )
 
 urlpatterns = [
@@ -48,4 +48,5 @@ urlpatterns = [
     path('extract-components/', extract_task_components, name='extract_task_components'),
     path('bulk-process/', bulk_process_tasks, name='bulk_process_tasks'),
     path('statistics/', get_task_statistics, name='task_statistics'),
+    path('tasks/<int:task_id>/calendar/', calendar_operations, name='calendar_operations'),
 ]

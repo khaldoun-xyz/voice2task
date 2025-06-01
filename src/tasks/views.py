@@ -6,6 +6,7 @@ import json
 import logging
 from .models import Task
 from .simple_workflow import SimpleWorkflowEngine
+from .google_calendar_service import calendar_service
 from .task_extractor import (
     extract_task_from_text,
     TaskExtractor,
@@ -73,6 +74,8 @@ def _create_task_dict(task):
         'assigned_to': task.assigned_to,
         'priority': task.priority,
         'created_at': task.created_at.isoformat(),
+        'calendar_event_id': task.calendar_event_id,
+        'calendar_event_link': task.calendar_event_link
     }
 
 def home(request):
@@ -107,7 +110,6 @@ def process_voice(request):
                 "error": f"Failed to extract task: {task_data['error']}"
             }, status=500)
 
-  
         task = Task(
             user='anonymous',
             voice_input=voice_text,
@@ -155,8 +157,14 @@ def process_voice(request):
                 "feedback": feedback_message,
                 "workflow_id": workflow_id,
                 "workflow_status": task.workflow_status,
+                "calendar_event_id": task.calendar_event_id,
+                "calendar_event_link": task.calendar_event_link
             }
         })
+
+    except Exception as e:
+        logger.exception("Unexpected error processing voice input")
+        return JsonResponse({"status": "error", "error": f"Unexpected error: {str(e)}"}, status=500)
 
     except Exception as e:
         logger.exception("Unexpected error processing voice input")
@@ -495,4 +503,62 @@ def get_task_statistics(request):
         return JsonResponse({
             "status": "error",
             "error": f"Statistics error: {str(e)}"
+        }, status=500)
+
+@csrf_exempt
+def calendar_operations(request, task_id):
+    """Handle calendar operations for a task"""
+    try:
+        task = Task.objects.get(id=task_id)
+
+        if request.method == 'GET':
+            # List upcoming events
+            events = calendar_service.list_upcoming_events()
+            return JsonResponse({'events': events})
+
+        elif request.method == 'POST':
+            # Create or update calendar event
+            if task.calendar_event_id:
+                result = calendar_service.update_calendar_event(
+                    task.calendar_event_id,
+                    _create_task_dict(task)
+                )
+            else:
+                result = calendar_service.create_calendar_event(
+                    _create_task_dict(task)
+                )
+
+            if result['success']:
+                task.calendar_event_id = result.get('event_id')
+                task.calendar_event_link = result.get('event_link')
+                task.workflow_status = 'completed'  # Auto-complete when calendar event is created
+                task.save()
+
+            return JsonResponse(result)
+
+        elif request.method == 'DELETE':
+            if not task.calendar_event_id:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'No calendar event associated with this task'
+                }, status=400)
+
+            result = calendar_service.delete_calendar_event(task.calendar_event_id)
+            if result['success']:
+                task.calendar_event_id = None
+                task.calendar_event_link = None
+                task.save()
+
+            return JsonResponse(result)
+
+    except Task.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'message': 'Task not found'
+        }, status=404)
+    except Exception as e:
+        logger.error(f"Calendar operation error: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'message': str(e)
         }, status=500)

@@ -34,6 +34,23 @@ class Task(models.Model):
     workflow_status = models.CharField(max_length=50, default='pending')
     assigned_to = models.CharField(max_length=100, blank=True)
     priority = models.CharField(max_length=20, default='medium')
+    calendar_event_id = models.CharField(max_length=255, blank=True, null=True)
+    calendar_event_link = models.URLField(blank=True, null=True)
     
     def __str__(self):
         return f"{self.action} - {self.person} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
+    
+    @property
+    def has_calendar_event(self):
+        return bool(self.calendar_event_id)
+    
+    def get_calendar_link(self):
+        if self.calendar_event_link:
+            return self.calendar_event_link
+        if self.calendar_event_id:
+            return f"https://calendar.google.com/calendar/event?eid={self.calendar_event_id}"
+        return None
+    def save(self, *args, **kwargs):
+        if self.calendar_event_id and self.workflow_status != 'completed':
+            self.workflow_status = 'completed'
+        super().save(*args, **kwargs)
