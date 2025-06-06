@@ -17,35 +17,44 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path
+
 from tasks.views import (
-    home, 
-    process_voice, 
-    workflow_status, 
-    complete_workflow_task_view,
-    task_list,
-    task_detail,
-    update_task,
     analyze_voice_text,
+    bulk_process_tasks,
+    complete_workflow_task_view,
     detect_language,
     extract_task_components,
-    bulk_process_tasks,
     get_task_statistics,
-    analyze_voice_text
+    home,
+    process_voice,
+    task_detail,
+    task_list,
+    update_task,
+    workflow_status,
 )
 
 urlpatterns = [
-    path('', home, name='home'),
+    path("", home, name="home"),
     path("admin/", admin.site.urls),
-    path('api/process-voice/', process_voice, name='process_voice'),
-    path('api/workflow/<str:workflow_id>/status/', workflow_status, name='workflow_status'),
-    path('api/workflow/<str:workflow_id>/task/<str:task_name>/complete/', complete_workflow_task_view, name='complete_workflow_task'),
-    path('tasks/', task_list, name='task_list'),
-    path('task/<int:task_id>/', update_task, name='update_task'),
-    path('task/<int:task_id>/detail/', task_detail, name='task_detail'),
-    
-    path('analyze-text/',analyze_voice_text, name='analyze_voice_text'),
-    path('detect-language/', detect_language, name='detect_language'),
-    path('extract-components/', extract_task_components, name='extract_task_components'),
-    path('bulk-process/', bulk_process_tasks, name='bulk_process_tasks'),
-    path('statistics/', get_task_statistics, name='task_statistics'),
+    path("api/process-voice/", process_voice, name="process_voice"),
+    path(
+        "api/workflow/<str:workflow_id>/status/",
+        workflow_status,
+        name="workflow_status",
+    ),
+    path(
+        "api/workflow/<str:workflow_id>/task/<str:task_name>/complete/",
+        complete_workflow_task_view,
+        name="complete_workflow_task",
+    ),
+    path("tasks/", task_list, name="task_list"),
+    path("task/<int:task_id>/", update_task, name="update_task"),
+    path("task/<int:task_id>/detail/", task_detail, name="task_detail"),
+    path("analyze-text/", analyze_voice_text, name="analyze_voice_text"),
+    path("detect-language/", detect_language, name="detect_language"),
+    path(
+        "extract-components/", extract_task_components, name="extract_task_components"
+    ),
+    path("bulk-process/", bulk_process_tasks, name="bulk_process_tasks"),
+    path("statistics/", get_task_statistics, name="task_statistics"),
 ]

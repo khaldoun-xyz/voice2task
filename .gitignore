@@ -2,8 +2,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.pyc
-*/migrations/*
-!*/migrations/__init__.py
+**/migrations/*
+!**/migrations/__init__.py
 venv/
 .env/
 db.sqlite3

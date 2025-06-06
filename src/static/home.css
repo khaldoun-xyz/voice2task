@@ -79,6 +79,142 @@ body {
 .grid { display: grid; }
 .hidden { display: none; }
 
+/* Add these to your CSS file */
+.no-border-bg {
+    margin: 0;
+    border: none;
+    background: transparent;
+}
+
+.workflow-actions-container {
+    margin-top: 25px;
+    padding-top: 20px;
+    border-top: 1px solid #e1e5e9;
+}
+
+.workflow-action-button {
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+.meta-item-workflow {
+    margin-top: 10px;
+    padding: 10px;
+    background: #e8f4fd;
+    border-radius: 8px;
+}
+
+.step-title {
+    margin-bottom: 15px;
+    color: #333;
+}
+
+.workflow-status-note {
+    color: #666;
+    margin-top: 15px;
+    line-height: 1.6;
+}
+
+/* ==========================================================================
+   ADDITIONAL UTILITY CLASSES FOR INLINE STYLE FIXES
+   ========================================================================== */
+
+/* Padding utilities */
+.padding-20 {
+    padding: 20px;
+}
+
+.padding-15 {
+    padding: 15px;
+}
+
+.padding-10 {
+    padding: 10px;
+}
+
+/* Margin utilities */
+.margin-top-20 {
+    margin-top: 20px;
+}
+
+.margin-top-15 {
+    margin-top: 15px;
+}
+
+.margin-top-10 {
+    margin-top: 10px;
+}
+
+.margin-bottom-15 {
+    margin-bottom: 15px;
+}
+
+.margin-bottom-10 {
+    margin-bottom: 10px;
+}
+
+/* Color utilities */
+.color-666 {
+    color: #666;
+}
+
+.color-333 {
+    color: #333;
+}
+
+/* Font weight utilities */
+.font-weight-600 {
+    font-weight: 600;
+}
+
+.font-weight-bold {
+    font-weight: bold;
+}
+
+/* Background utilities */
+.bg-light-blue {
+    background: #e8f4fd;
+}
+
+.bg-light-gray {
+    background: #f8f9fa;
+}
+
+/* Specific fixes for the linting errors */
+.workflow-step-header {
+    color: #333;
+    margin-bottom: 15px;
+    font-weight: 600;
+}
+
+.workflow-analysis-text {
+    color: #666;
+    margin-top: 15px;
+    line-height: 1.6;
+}
+
+.workflow-step-container {
+    background: #e8f4fd;
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 10px;
+}
+
+.workflow-step-title {
+    color: #333;
+    margin-bottom: 15px;
+    font-weight: 600;
+}
+
+.workflow-button-container {
+    margin-top: 20px;
+}
+.task-time {
+    color: #666;
+    font-size: 0.9rem;
+}
+
+
 /* ==========================================================================
    ANIMATIONS & KEYFRAMES
    ========================================================================== */
@@ -891,6 +1027,7 @@ body {
     transform: translateY(0);
     animation: fadeInUp 0.4s ease-out;
 }
+
 
 .task-textarea {
     width: 100%;
