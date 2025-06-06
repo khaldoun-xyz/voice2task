@@ -1,151 +1,129 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TaskFlow - Voice/Text-to-Task Management</title>
-    <link rel="stylesheet" href="/static/home.css">
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>TaskFlow</h1>
-            <p>Transform voice commands or text into organized workflows for your entire team</p>
-        </div>
-
-        <div class="main-grid">
-            <div class="voice-panel">
-                <h2>🎤 Task Input Center</h2>
-
-                <select id="languageSelect" class="language-select">
-                    <option value="en-US">🇺🇸 English (US)</option>
-                    <option value="de-DE">🇩🇪 German</option>
-                </select>
-
-                <div class="input-mode-toggle">
-                    <div class="mode-option active" id="voiceMode" onclick="switchInputMode('voice')">
-                        🎤 Voice Command
-                    </div>
-                    <div class="mode-option" id="textMode" onclick="switchInputMode('text')">
-                        ✍️ Text Input
-                    </div>
-                </div>
-
-                <div class="voice-section active" id="voiceSection">
-                    <button id="recordButton" class="record-button">
-                        🎤 Start Voice Command
-                    </button>
-
-                    <div id="recordingIndicator" class="recording-indicator">
-                        <div class="pulse"></div>
-                        Listening... Speak your command
-                    </div>
-
-                    <div id="interimResult" class="interim-result">
-                        Click the button above and say something like:<br>
-                        "Call John about project deadline by Friday"
-                    </div>
-                </div>
-
-                <div class="text-input-section" id="textSection">
-                    <textarea 
-                        id="taskTextarea" 
-                        class="task-textarea" 
-                        placeholder="Type your task here... 
-
-For example:
-• Call John about project deadline by Friday
-• Send email to Sarah regarding budget review by tomorrow"
-                    ></textarea>
-                    
-                    <button id="submitButton" class="submit-button">
-                        ✍️ Create Task from Text
-                    </button>
-                </div>
-
-                <div id="taskResult" class="task-result">
-                </div>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="description"
+              content="TaskFlow - Voice and text task management system">
+        <meta name="keywords"
+              content="task management,voice commands,productivity,workflow">
+        <title>TaskFlow - Home</title>
+        <link rel="stylesheet" href="{% static 'home.css' %}">
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>TaskFlow</h1>
+                <p>Transform voice commands or text into organized workflows for your entire team</p>
             </div>
-
-            <div class="dashboard-panel">
-                <div class="dashboard-header">
-                    <h2>📊 Team Dashboard</h2>
-                    <div class="filter-tabs">
-                        <a href="?filter=all" class="filter-tab {% if current_filter == 'all' %}active{% endif %}" data-filter="all">All</a>
-                        <a href="?filter=running" class="filter-tab {% if current_filter == 'running' %}active{% endif %}" data-filter="running">Active</a>
-                        <a href="?filter=waiting" class="filter-tab {% if current_filter == 'waiting' %}active{% endif %}" data-filter="waiting">Pending</a>
-                        <a href="?filter=completed" class="filter-tab {% if current_filter == 'completed' %}active{% endif %}" data-filter="completed">Done</a>
+            <div class="main-grid">
+                <div class="voice-panel">
+                    <h2>🎤 Task Input Center</h2>
+                    <select id="languageSelect" class="language-select">
+                        <option value="en-US">🇺🇸 English (US)</option>
+                        <option value="de-DE">🇩🇪 German</option>
+                    </select>
+                    <div class="input-mode-toggle">
+                        <div class="mode-option active"
+                             id="voiceMode"
+                             onclick="switchInputMode('voice')">🎤 Voice Command</div>
+                        <div class="mode-option" id="textMode" onclick="switchInputMode('text')">✍️ Text Input</div>
                     </div>
+                    <div class="voice-section active" id="voiceSection">
+                        <button id="recordButton" class="record-button">🎤 Start Voice Command</button>
+                        <div id="recordingIndicator" class="recording-indicator">
+                            <div class="pulse"></div>
+                            Listening... Speak your command
+                        </div>
+                        <div id="interimResult" class="interim-result no-border-bg">
+                            Click the button above and say something like:
+                            <br>
+                            "Call John about project deadline by Friday"
+                        </div>
+                    </div>
+                    <div class="text-input-section" id="textSection">
+                        <textarea id="taskTextarea"
+                                  class="task-textarea"
+                                  placeholder="Type your task here...  For example: • Call John about project deadline by Friday • Send email to Sarah regarding budget review by tomorrow"></textarea>
+                        <button id="submitButton" class="submit-button">✍️ Create Task from Text</button>
+                    </div>
+                    <div id="taskResult" class="task-result"></div>
                 </div>
-
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-number" id="totalTasks">{{ total_tasks }}</div>
-                        <div class="stat-label">Total Tasks</div>
+                <div class="dashboard-panel">
+                    <div class="dashboard-header">
+                        <h2>📊 Team Dashboard</h2>
+                        <div class="filter-tabs">
+                            <a href="?filter=all"
+                               class="filter-tab {% if current_filter == 'all' %}active{% endif %}"
+                               data-filter="all">All</a>
+                            <a href="?filter=running"
+                               class="filter-tab {% if current_filter == 'running' %}active{% endif %}"
+                               data-filter="running">Active</a>
+                            <a href="?filter=waiting"
+                               class="filter-tab {% if current_filter == 'waiting' %}active{% endif %}"
+                               data-filter="waiting">Pending</a>
+                            <a href="?filter=completed"
+                               class="filter-tab {% if current_filter == 'completed' %}active{% endif %}"
+                               data-filter="completed">Done</a>
+                        </div>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-number" id="activeTasks">{{ active_tasks }}</div>
-                        <div class="stat-label">Active</div>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-number" id="totalTasks">{{ total_tasks }}</div>
+                            <div class="stat-label">Total Tasks</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number" id="activeTasks">{{ active_tasks }}</div>
+                            <div class="stat-label">Active</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number" id="pendingTasks">{{ pending_tasks }}</div>
+                            <div class="stat-label">Pending</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number" id="completedTasks">{{ completed_tasks }}</div>
+                            <div class="stat-label">Completed</div>
+                        </div>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-number" id="pendingTasks">{{ pending_tasks }}</div>
-                        <div class="stat-label">Pending</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number" id="completedTasks">{{ completed_tasks }}</div>
-                        <div class="stat-label">Completed</div>
-                    </div>
-                </div>
-
-                <div class="task-list" id="taskList">
-                    {% if recent_tasks %}
-                        {% for task in recent_tasks %}
-                        <div class="task-item priority-{{ task.priority|default:'medium' }}" onclick="window.location.href='/task/{{ task.id }}/detail/'">
-                            <div class="task-header">
-                                <div class="task-title">{{ task.action|default:"No action specified" }}</div>
-                                <div class="task-status status-{{ task.workflow_status|default:"pending" }}">
-                                    {{ task.workflow_status|default:"pending" }}
+                    <div class="task-list" id="taskList">
+                        {% if recent_tasks %}
+                            {% for task in recent_tasks %}
+                                <div class="task-item priority-{{ task.priority|default:'medium' }}"
+                                     onclick="window.location.href='/task/{{ task.id }}/detail/'">
+                                    <div class="task-header">
+                                        <div class="task-title">{{ task.action|default:"No action specified" }}</div>
+                                        <div class="task-status status-{{ task.workflow_status|default:"pending" }}">
+                                            {{ task.workflow_status|default:"pending" }}
+                                        </div>
+                                    </div>
+                                    <div class="task-meta">
+                                        {% if task.person %}<span>👤 {{ task.person }}</span>{% endif %}
+                                        <span>📋 {{ task.task_type|default:"general" }}</span>
+                                        <span>⏰ {{ task.deadline|default:"No deadline" }}</span>
+                                    </div>
+                                    <div class="task-time">{{ task.created_at|date:"M d, Y H:i" }}</div>
                                 </div>
-                            </div>
-                            <div class="task-meta">
-                                {% if task.person %}<span>👤 {{ task.person }}</span>{% endif %}
-                                <span>📋 {{ task.task_type|default:"general" }}</span>
-                                <span>⏰ {{ task.deadline|default:"No deadline" }}</span>
-                            </div>
-                            <div style="color: #666; font-size: 0.9rem;">
-                                {{ task.created_at|date:"M d, Y H:i" }}
-                            </div>
-                        </div>
-                        {% endfor %}
-                    {% else %}
-                        <div class="interim-result" style="margin: 0; border: none; background: transparent;">
-                            No tasks yet. Use voice commands or text input to create your first task!
-                        </div>
-                    {% endif %}
+                            {% endfor %}
+                        {% else %}
+                            <div class="no-border-bg">No tasks yet. Use voice commands or text input to create your first task!</div>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
-        </div>
-
-        <div class="workflow-actions">
-            <div class="action-button" onclick="showWorkflowDesigner()">
-                🔧 Workflow Designer
-            </div>
-            <div class="action-button" onclick="showAnalytics()">
-                📈 Analytics & Reports
-            </div>
-            <div class="action-button" onclick="showTeamManagement()">
-                👥 Team Management
+            <div class="workflow-actions">
+                <div class="action-button" onclick="showWorkflowDesigner()">🔧 Workflow Designer</div>
+                <div class="action-button" onclick="showAnalytics()">📈 Analytics & Reports</div>
+                <div class="action-button" onclick="showTeamManagement()">👥 Team Management</div>
             </div>
         </div>
-    </div>
-
-    <script>
+        <script>
         const recordButton = document.getElementById('recordButton');
         const interimResult = document.getElementById('interimResult');
         const taskResult = document.getElementById('taskResult');
         const recordingIndicator = document.getElementById('recordingIndicator');
         const languageSelect = document.getElementById('languageSelect');
-        
+
         const taskTextarea = document.getElementById('taskTextarea');
         const submitButton = document.getElementById('submitButton');
         const voiceSection = document.getElementById('voiceSection');
@@ -160,7 +138,7 @@ For example:
         document.addEventListener('DOMContentLoaded', () => {
             setupVoiceRecognition();
             setupTextInput();
-            
+
             const urlParams = new URLSearchParams(window.location.search);
             const currentFilter = urlParams.get('filter') || 'all';
             filterTasks(currentFilter);
@@ -168,16 +146,16 @@ For example:
 
         function switchInputMode(mode) {
             currentInputMode = mode;
-            
+
             voiceModeBtn.classList.toggle('active', mode === 'voice');
             textModeBtn.classList.toggle('active', mode === 'text');
-            
+
             // Show/hide sections
             voiceSection.classList.toggle('active', mode === 'voice');
             textSection.classList.toggle('active', mode === 'text');
 
             taskResult.classList.remove('show');
-            
+
             if (mode === 'voice') {
                 interimResult.innerHTML = 'Click the button above and say something like:<br>"Call John about project deadline by Friday"';
             } else {
@@ -206,19 +184,19 @@ For example:
 
         async function handleTextSubmit() {
             const textInput = taskTextarea.value.trim();
-            
+
             if (!textInput) {
                 alert('Please enter a task description');
                 return;
             }
-            
+
             if (isProcessing) return;
-            
+
             isProcessing = true;
             submitButton.disabled = true;
             submitButton.textContent = '⚡ Processing...';
             taskResult.classList.remove('show');
-            
+
             try {
                 await processVoiceCommand(textInput);
                 taskTextarea.value = '';
@@ -249,13 +227,13 @@ For example:
                 if (isProcessing) return;
 
                 taskResult.classList.remove('show');
-                
+
                 recognition.lang = languageSelect.value;
                 recordButton.disabled = true;
                 recordButton.textContent = '🔄 Listening...';
                 recordingIndicator.classList.add('active');
                 interimResult.innerHTML = 'Listening... Speak your command now';
-                
+
                 try {
                     recognition.start();
                     console.log('Voice recognition started');
@@ -287,7 +265,7 @@ For example:
                     isProcessing = true;
                     recordingIndicator.classList.remove('active');
                     interimResult.innerHTML = `⚡ Processing: "${finalTranscript}"`;
-                    
+
                     processVoiceCommand(finalTranscript);
                 }
             };
@@ -341,17 +319,17 @@ For example:
                 if (!response.ok) {
                     throw new Error(`Server returned ${response.status}: ${response.statusText}`);
                 }
-                
+
                 const result = await response.json();
-                
+
                 if (result.error) {
                     throw new Error(result.error);
                 }
 
                 displayTaskResult(result, voiceText);
-                
+
                 await updateTaskList();
-                
+
                 const feedbackText = result.data?.feedback || result.feedback;
                 if ('speechSynthesis' in window && feedbackText && currentInputMode === 'voice') {
                     const utterance = new SpeechSynthesisUtterance(feedbackText);
@@ -382,7 +360,7 @@ For example:
         function displayTaskResult(result, originalText) {
             const taskData = result.data || result;
             const status = result.status || 'success';
-            
+
             if (status === 'success') {
                 taskResult.innerHTML = `
                     <h3>✅ Task Created Successfully!</h3>
@@ -400,7 +378,7 @@ For example:
                     ${taskData.workflow_id ? `<div class="task-detail"><strong>Workflow ID:</strong> ${taskData.workflow_id}</div>` : ''}
                 `;
                 taskResult.classList.add('show');
-                
+
                 if (currentInputMode === 'voice') {
                     interimResult.innerHTML = `🎉 ${taskData.feedback || 'Task created successfully!'}`;
                 }
@@ -412,7 +390,7 @@ For example:
                     </div>
                 `;
                 taskResult.classList.add('show');
-                
+
                 if (currentInputMode === 'voice') {
                     interimResult.innerHTML = `❌ Error: ${result.error || 'Failed to create task'}`;
                 }
@@ -426,12 +404,12 @@ For example:
                         'X-Requested-With': 'XMLHttpRequest'
                     }
                 });
-                
+
                 if (response.ok) {
                     const html = await response.text();
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(html, 'text/html');
-                    
+
 
                     const newTaskList = doc.getElementById('taskList');
                     const currentTaskList = document.getElementById('taskList');
@@ -460,7 +438,7 @@ For example:
         function filterTasks(filter) {
             const taskItems = document.querySelectorAll('.task-item');
             const filterTabs = document.querySelectorAll('.filter-tab');
-            
+
             filterTabs.forEach(tab => {
                 tab.classList.remove('active');
                 if (tab.dataset.filter === filter) {
@@ -471,10 +449,10 @@ For example:
             taskItems.forEach(item => {
                 const status = item.querySelector('.task-status');
                 if (!status) return;
-                
+
                 const statusClass = status.className;
                 let shouldShow = false;
-                
+
                 switch (filter) {
                     case 'all':
                         shouldShow = true;
@@ -489,7 +467,7 @@ For example:
                         shouldShow = statusClass.includes('status-completed');
                         break;
                 }
-                
+
                 item.style.display = shouldShow ? 'block' : 'none';
             });
         }
@@ -532,6 +510,6 @@ For example:
         window.toggleVoicePanel = toggleVoicePanel;
         window.filterTasks = filterTasks;
         window.switchInputMode = switchInputMode;
-    </script>
-</body>
+        </script>
+    </body>
 </html>

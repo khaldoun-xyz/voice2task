@@ -1,144 +1,153 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TaskFlow Pro - Task List</title>
-    <link rel="stylesheet" href="/static/home.css">
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <div class="header-content">
-                <h1>📋 Task Management</h1>
-                <p>Manage and track all your Voice/Text-generated tasks</p>
-            </div>
-            <div class="header-actions">
-                <a href="/" class="btn btn-secondary">🏠 Home</a>
-                <button class="btn btn-primary" onclick="window.location.reload()">🔄 Refresh</button>
-            </div>
-        </div>
-
-        <div class="filters-section">
-            <div class="filter-controls">
-                <div class="filter-tabs">
-                    <a href="?filter=all" class="filter-tab {% if current_filter == 'all' %}active{% endif %}" data-status="all">All Tasks</a>
-                    <a href="?filter=pending" class="filter-tab {% if current_filter == 'pending' %}active{% endif %}" data-status="pending">Pending</a>
-                    <a href="?filter=running" class="filter-tab {% if current_filter == 'running' %}active{% endif %}" data-status="running">Running</a>
-                    <a href="?filter=completed" class="filter-tab {% if current_filter == 'completed' %}active{% endif %}" data-status="completed">Completed</a>
-                    <a href="?filter=failed" class="filter-tab {% if current_filter == 'failed' %}active{% endif %}" data-status="failed">Failed</a>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="description" content="Task list for TaskFlow system">
+        <meta name="keywords" content="task list,task management,productivity">
+        <title>TaskFlow Pro - Task List</title>
+        <link rel="stylesheet" href="{% static 'home.css' %}">
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <div class="header-content">
+                    <h1>📋 Task Management</h1>
+                    <p>Manage and track all your Voice/Text-generated tasks</p>
                 </div>
-                <input type="text" class="search-box" placeholder="🔍 Search tasks..." id="searchInput">
+                <div class="header-actions">
+                    <a href="{% url 'home' %}" class="btn btn-secondary">🏠 Home</a>
+                    <button class="btn btn-primary" onclick="window.location.reload()">🔄 Refresh</button>
+                </div>
             </div>
-        </div>
-
-        <div class="stats-overview">
-            <div class="stat-card">
-                <div class="stat-number" id="totalTasks">{{ total_tasks }}</div>
-                <div class="stat-label">Total Tasks</div>
+            <div class="filters-section">
+                <div class="filter-controls">
+                    <div class="filter-tabs">
+                        <a href="?filter=all"
+                           class="filter-tab {% if current_filter == 'all' %}active{% endif %}"
+                           data-status="all">All Tasks</a>
+                        <a href="?filter=pending"
+                           class="filter-tab {% if current_filter == 'pending' %}active{% endif %}"
+                           data-status="pending">Pending</a>
+                        <a href="?filter=running"
+                           class="filter-tab {% if current_filter == 'running' %}active{% endif %}"
+                           data-status="running">Running</a>
+                        <a href="?filter=completed"
+                           class="filter-tab {% if current_filter == 'completed' %}active{% endif %}"
+                           data-status="completed">Completed</a>
+                        <a href="?filter=failed"
+                           class="filter-tab {% if current_filter == 'failed' %}active{% endif %}"
+                           data-status="failed">Failed</a>
+                    </div>
+                    <input type="text"
+                           class="search-box"
+                           placeholder="🔍 Search tasks..."
+                           id="searchInput">
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-number" id="pendingTasks">{{ pending_tasks }}</div>
-                <div class="stat-label">Pending</div>
+            <div class="stats-overview">
+                <div class="stat-card">
+                    <div class="stat-number" id="totalTasks">{{ total_tasks }}</div>
+                    <div class="stat-label">Total Tasks</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="pendingTasks">{{ pending_tasks }}</div>
+                    <div class="stat-label">Pending</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="runningTasks">{{ running_tasks }}</div>
+                    <div class="stat-label">Running</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="completedTasks">{{ completed_tasks }}</div>
+                    <div class="stat-label">Completed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="failedTasks">{{ failed_tasks }}</div>
+                    <div class="stat-label">Failed</div>
+                </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-number" id="runningTasks">{{ running_tasks }}</div>
-                <div class="stat-label">Running</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number" id="completedTasks">{{ completed_tasks }}</div>
-                <div class="stat-label">Completed</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number" id="failedTasks">{{ failed_tasks }}</div>
-                <div class="stat-label">Failed</div>
-            </div>
-        </div>
-
-        <div class="tasks-container">
-            <div class="tasks-header">
-                <h2>All Tasks</h2>
-                <select class="sort-dropdown" id="sortSelect">
-                    <option value="created_at">Sort by Date</option>
-                    <option value="status">Sort by Status</option>
-                    <option value="task_type">Sort by Type</option>
-                    <option value="deadline">Sort by Deadline</option>
-                </select>
-            </div>
-
-            <div class="task-grid" id="taskGrid">
-                {% if tasks %}
-                    {% for task in tasks %}
-                    <div class="task-item priority-medium" data-status="{{ task.status|default:'pending' }}" data-type="{{ task.task_type }}">
-                        <div class="task-header">
-                            <div>
-                                <div class="task-title">{{ task.action|default:'No Action Specified' }}</div>
-                                <div class="task-status status-{{ task.workflow_status|default:'pending' }}">
-                                    {{ task.workflow_status|default:'pending'|title }}
+            <div class="tasks-container">
+                <div class="tasks-header">
+                    <h2>All Tasks</h2>
+                    <select class="sort-dropdown" id="sortSelect">
+                        <option value="created_at">Sort by Date</option>
+                        <option value="status">Sort by Status</option>
+                        <option value="task_type">Sort by Type</option>
+                        <option value="deadline">Sort by Deadline</option>
+                    </select>
+                </div>
+                <div class="task-grid" id="taskGrid">
+                    {% if tasks %}
+                        {% for task in tasks %}
+                            <div class="task-item priority-medium"
+                                 data-status="{{ task.status|default:'pending' }}"
+                                 data-type="{{ task.task_type }}">
+                                <div class="task-header">
+                                    <div>
+                                        <div class="task-title">{{ task.action|default:'No Action Specified' }}</div>
+                                        <div class="task-status status-{{ task.workflow_status|default:'pending' }}">
+                                            {{ task.workflow_status|default:'pending'|title }}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="task-description">"{{ task.voice_input|default:'No voice input recorded' }}"</div>
+                                <div class="task-meta">
+                                    <div class="meta-item">
+                                        <span>👤</span>
+                                        <strong>Person:</strong> {{ task.person|default:'Not specified' }}
+                                    </div>
+                                    <div class="meta-item">
+                                        <span>📋</span>
+                                        <strong>Type:</strong> {{ task.task_type|default:'general' }}
+                                    </div>
+                                    <div class="meta-item">
+                                        <span>📅</span>
+                                        <strong>Created:</strong> {{ task.created_at|date:"M d, Y H:i" }}
+                                    </div>
+                                    <div class="meta-item">
+                                        <span>⏰</span>
+                                        <strong>Deadline:</strong> {{ task.deadline|default:'No deadline' }}
+                                    </div>
+                                    <div class="meta-item">
+                                        <span>💬</span>
+                                        <strong>Topic:</strong> {{ task.topic|default:'No topic' }}
+                                    </div>
+                                    <div class="meta-item">
+                                        <span>🌐</span>
+                                        <strong>Language:</strong> {{ task.language|default:'en' }}
+                                    </div>
+                                </div>
+                                {% if task.workflow_id %}
+                                    <div class="meta-item meta-item-workflow">
+                                        <span>🔄</span>
+                                        <strong>Workflow:</strong> {{ task.workflow_id }}
+                                        <span class="workflow-id-additional">({{ task.workflow_status|default:'Unknown' }})</span>
+                                    </div>
+                                {% endif %}
+                                <div class="task-actions">
+                                    <a href="{% url 'task_detail' task.id %}"
+                                       class="btn btn-secondary btn-small">👁️ View Details</a>
+                                    <button class="btn btn-primary btn-small"
+                                            onclick="updateTaskStatus({{ task.id }}, 'completed')">
+                                        ✅ Mark Complete
+                                    </button>
                                 </div>
                             </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="no-tasks">
+                            <div class="no-tasks-icon">📝</div>
+                            <h3>No Tasks Found</h3>
+                            <p>You haven't created any tasks yet. Go back to the home page to create your first voice or Text task!</p>
+                            <a href="{% url 'home' %}" class="btn btn-primary">🎤 Create First Task</a>
                         </div>
-
-                        <div class="task-description">
-                            "{{ task.voice_input|default:'No voice input recorded' }}"
-                        </div>
-
-                        <div class="task-meta">
-                            <div class="meta-item">
-                                <span>👤</span>
-                                <strong>Person:</strong> {{ task.person|default:'Not specified' }}
-                            </div>
-                            <div class="meta-item">
-                                <span>📋</span>
-                                <strong>Type:</strong> {{ task.task_type|default:'general' }}
-                            </div>
-                            <div class="meta-item">
-                                <span>📅</span>
-                                <strong>Created:</strong> {{ task.created_at|date:"M d, Y H:i" }}
-                            </div>
-                            <div class="meta-item">
-                                <span>⏰</span>
-                                <strong>Deadline:</strong> {{ task.deadline|default:'No deadline' }}
-                            </div>
-                            <div class="meta-item">
-                                <span>💬</span>
-                                <strong>Topic:</strong> {{ task.topic|default:'No topic' }}
-                            </div>
-                            <div class="meta-item">
-                                <span>🌐</span>
-                                <strong>Language:</strong> {{ task.language|default:'en' }}
-                            </div>
-                        </div>
-
-                        {% if task.workflow_id %}
-                        <div class="meta-item" style="margin-top: 10px; padding: 10px; background: #e8f4fd; border-radius: 8px;">
-                            <span>🔄</span>
-                            <strong>Workflow:</strong> {{ task.workflow_id }}
-                            <span style="margin-left: 10px; font-size: 0.9em;">({{ task.workflow_status|default:'Unknown' }})</span>
-                        </div>
-                        {% endif %}
-
-                        <div class="task-actions">
-                            <a href="/task/{{ task.id }}/detail/" class="btn btn-secondary btn-small">👁️ View Details</a>
-                            <button class="btn btn-primary btn-small" onclick="updateTaskStatus({{ task.id }}, 'completed')">
-                                ✅ Mark Complete
-                            </button>
-                        </div>
-                    </div>
-                    {% endfor %}
-                {% else %}
-                    <div class="no-tasks">
-                        <div class="no-tasks-icon">📝</div>
-                        <h3>No Tasks Found</h3>
-                        <p>You haven't created any tasks yet. Go back to the home page to create your first voice or Text task!</p>
-                        <a href="/" class="btn btn-primary">🎤 Create First Task</a>
-                    </div>
-                {% endif %}
+                    {% endif %}
+                </div>
             </div>
         </div>
-    </div>
-
-    <script>
+        <script>
         let allTasks = [];
         let filteredTasks = [];
         let currentFilter = 'all';
@@ -150,7 +159,7 @@
                     if (this.tagName === 'A') {
                         return;
                     }
-                    
+
                     const filter = this.dataset.status;
                     window.location.search = `?filter=${filter}`;
                 });
@@ -197,9 +206,9 @@
                     animation: slideIn 0.3s ease;
                 `;
                 notification.textContent = message;
-                
+
                 document.body.appendChild(notification);
-                
+
                 setTimeout(() => {
                     notification.style.animation = 'slideOut 0.3s ease';
                     setTimeout(() => notification.remove(), 300);
@@ -234,6 +243,6 @@
             `;
             document.head.appendChild(style);
         });
-    </script>
-</body>
+        </script>
+    </body>
 </html>

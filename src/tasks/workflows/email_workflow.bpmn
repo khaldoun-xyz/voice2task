@@ -3,21 +3,21 @@
   <bpmn:process id="email_process" isExecutable="true">
     <bpmn:startEvent id="start" />
     <bpmn:sequenceFlow id="flow1" sourceRef="start" targetRef="auto_validate_task" />
-    
+
     <bpmn:serviceTask id="auto_validate_task" name="Validate Task Data" />
     <bpmn:sequenceFlow id="flow2" sourceRef="auto_validate_task" targetRef="auto_set_priority" />
-    
+
     <bpmn:serviceTask id="auto_set_priority" name="Set Priority" />
     <bpmn:sequenceFlow id="flow3" sourceRef="auto_set_priority" targetRef="compose_email" />
-    
+
     <bpmn:userTask id="compose_email" name="Compose Email">
       <bpmn:documentation>Compose and send email</bpmn:documentation>
     </bpmn:userTask>
     <bpmn:sequenceFlow id="flow4" sourceRef="compose_email" targetRef="auto_send_notification" />
-    
+
     <bpmn:serviceTask id="auto_send_notification" name="Send Notification" />
     <bpmn:sequenceFlow id="flow5" sourceRef="auto_send_notification" targetRef="end" />
-    
+
     <bpmn:endEvent id="end" />
   </bpmn:process>
 </bpmn:definitions>
