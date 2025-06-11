@@ -1,21 +1,20 @@
+# simple_workflow.py
 import json
 import logging
 from typing import Any, Dict, Optional
 
 from django.core.cache import cache
 
+from .google_calendar_service import calendar_service
 from .models import Task
 
 logger = logging.getLogger(__name__)
 
 
 class SimpleWorkflowEngine:
-
     CACHE_PREFIX = "workflow_"
     CACHE_TIMEOUT = 3600 * 24
-
-    def __init__(self):
-        pass
+    CALENDAR_TASK_TYPES = ["call", "meeting", "reminder", "followup"]
 
     def create_task_workflow(self, task_data: Dict[str, Any]) -> Optional[str]:
         workflow_id = f"task_{task_data.get('id')}_{task_data.get('task_type')}"
@@ -29,21 +28,12 @@ class SimpleWorkflowEngine:
             "completed_steps": [],
             "data": {},
             "created_at": task_data.get("created_at", ""),
+            "calendar_event_id": None,
+            "calendar_event_link": None,
         }
 
         self._save_workflow(workflow_id, workflow)
-
-        task_id = task_data.get("id")
-        if task_id:
-            try:
-                task = Task.objects.get(id=task_id)
-                task.workflow_id = workflow_id
-                task.workflow_status = "running"
-                task.save()
-                logger.info(f"Updated task {task_id} with workflow_id: {workflow_id}")
-            except Task.DoesNotExist:
-                logger.error(f"Task {task_id} not found when setting workflow_id")
-
+        self._update_task_workflow_id(task_data.get("id"), workflow_id)
         self._process_automatic_steps(workflow_id)
 
         logger.info(f"Created workflow {workflow_id} for task {task_data.get('id')}")
@@ -52,14 +42,17 @@ class SimpleWorkflowEngine:
     def _get_workflow_steps(self, task_type: str) -> list:
         base_steps = ["validate", "set_priority", "assign_user", "notify"]
 
+        if task_type in self.CALENDAR_TASK_TYPES:
+            return base_steps + ["create_calendar_event", "auto_complete"]
+
         task_specific_steps = {
-            "call": base_steps + ["schedule_call", "complete_task"],
+            "call": base_steps + ["create_calendar_event", "auto_complete"],
             "email": base_steps + ["compose_email", "complete_task"],
-            "meeting": base_steps + ["schedule_meeting", "complete_task"],
+            "meeting": base_steps + ["create_calendar_event", "auto_complete"],
             "offer": base_steps + ["prepare_offer", "complete_task"],
             "document": base_steps + ["create_document", "complete_task"],
-            "followup": base_steps + ["schedule_followup", "complete_task"],
-            "reminder": base_steps + ["set_reminder", "complete_task"],
+            "followup": base_steps + ["create_calendar_event", "auto_complete"],
+            "reminder": base_steps + ["create_calendar_event", "auto_complete"],
             "general": base_steps + ["complete_task"],
         }
 
@@ -70,22 +63,57 @@ class SimpleWorkflowEngine:
         if not workflow:
             return
 
-        automatic_steps = ["validate", "set_priority", "assign_user", "notify"]
+        automatic_steps = [
+            "validate",
+            "set_priority",
+            "assign_user",
+            "notify",
+            "create_calendar_event",
+            "auto_complete",
+        ]
 
         for step in automatic_steps:
-            if step in workflow["steps"] and step not in workflow["completed_steps"]:
-                success = self._execute_step(workflow_id, step)
-                if success:
-                    workflow = self._load_workflow(workflow_id)
-                    if not workflow:
-                        return
+            if step not in workflow["steps"]:
+                continue
+
+            if step in workflow["completed_steps"]:
+                continue
+
+            success = self._execute_step(workflow_id, step)
+
+            workflow = self._load_workflow(workflow_id)
+            if not workflow:
+                break
+
+            if success:
+                if step not in workflow["completed_steps"]:
+                    workflow["completed_steps"].append(step)
+                    self._save_workflow(workflow_id, workflow)
+
+                if step == "auto_complete":
+                    workflow["status"] = "completed"
+                    workflow["current_step"] = None
+                    self._save_workflow(workflow_id, workflow)
+                    self._update_task_status(workflow)
+                    return
+            else:
+                if step == "create_calendar_event":
+
                     if step not in workflow["completed_steps"]:
                         workflow["completed_steps"].append(step)
                         self._save_workflow(workflow_id, workflow)
-
-        workflow = self._load_workflow(workflow_id)
-        if not workflow:
-            return
+                    logger.warning(
+                        f"Calendar creation failed for workflow {workflow_id}, continuing..."
+                    )
+                else:
+                    logger.error(
+                        f"Critical step {step} failed for workflow {workflow_id}"
+                    )
+                    workflow["status"] = "failed"
+                    workflow["current_step"] = step
+                    self._save_workflow(workflow_id, workflow)
+                    self._update_task_status(workflow)
+                    return
 
         remaining_steps = [
             s for s in workflow["steps"] if s not in workflow["completed_steps"]
@@ -94,29 +122,74 @@ class SimpleWorkflowEngine:
         if not remaining_steps:
             workflow["status"] = "completed"
             workflow["current_step"] = None
-        elif remaining_steps[0] == "complete_task":
-            success = self._execute_step(workflow_id, "complete_task")
-            if success:
-                workflow = self._load_workflow(workflow_id)
-                if workflow and "complete_task" not in workflow["completed_steps"]:
-                    workflow["completed_steps"].append("complete_task")
-                    workflow["status"] = "completed"
-                    workflow["current_step"] = None
-                    self._save_workflow(workflow_id, workflow)
-            else:
-                workflow["status"] = "pending"
-                workflow["current_step"] = remaining_steps[0]
         else:
-            workflow["current_step"] = remaining_steps[0]
             workflow["status"] = "pending"
+            workflow["current_step"] = remaining_steps[0]
 
         self._save_workflow(workflow_id, workflow)
         self._update_task_status(workflow)
+
+    def _update_task_workflow_id(self, task_id: Optional[str], workflow_id: str):
+        if not task_id:
+            return
+
+        try:
+            task = Task.objects.get(id=task_id)
+            if not task.workflow_id:
+                task.workflow_id = workflow_id
+                task.workflow_status = "running"
+                task.save()
+                logger.info(f"Updated task {task_id} with workflow_id: {workflow_id}")
+            else:
+                logger.info(
+                    f"Task {task_id} already has workflow_id: {task.workflow_id}"
+                )
+        except Task.DoesNotExist:
+            logger.error(f"Task {task_id} not found when setting workflow_id")
+
+    def _update_task_status(self, workflow: Dict[str, Any]):
+
+        task_id = workflow["task_data"].get("id")
+        if not task_id:
+            return
+
+        try:
+            task = Task.objects.get(id=task_id)
+
+            old_status = task.workflow_status
+            task.workflow_status = workflow["status"]
+
+            workflow_data = workflow.get("data", {})
+
+            if "priority" in workflow_data:
+                task.priority = workflow_data["priority"]
+            if "assigned_to" in workflow_data:
+                task.assigned_to = workflow_data["assigned_to"]
+
+            if workflow.get("calendar_event_id"):
+                task.calendar_event_id = workflow["calendar_event_id"]
+                task.calendar_event_link = workflow.get("calendar_event_link")
+
+            task.save()
+
+            if old_status != task.workflow_status:
+                logger.info(
+                    f"Updated task {task_id} status from {old_status} to: {workflow['status']}"
+                )
+
+        except Task.DoesNotExist:
+            logger.error(f"Task {task_id} not found when updating status")
+        except Exception as e:
+            logger.error(f"Error updating task {task_id}: {str(e)}")
 
     def _execute_step(self, workflow_id: str, step: str) -> bool:
         workflow = self._load_workflow(workflow_id)
         if not workflow:
             return False
+
+        if step in workflow.get("completed_steps", []):
+            logger.info(f"Step {step} already completed for workflow {workflow_id}")
+            return True
 
         task_data = workflow["task_data"]
 
@@ -129,21 +202,12 @@ class SimpleWorkflowEngine:
                 return self._execute_assign_step(workflow, task_data)
             elif step == "notify":
                 return self._execute_notify_step(workflow, task_data)
-            elif step == "complete_task":
-                workflow["status"] = "completed"
-                workflow["data"]["completed"] = True
-                self._save_workflow(workflow_id, workflow)
-                return True
-            elif (
-                step.startswith("schedule_")
-                or step.startswith("compose_")
-                or step.startswith("prepare_")
-                or step.startswith("create_")
-                or step.startswith("set_")
-            ):
-                workflow["data"][f"{step}_status"] = "pending"
-                self._save_workflow(workflow_id, workflow)
-                return True
+            elif step == "create_calendar_event":
+                return self._execute_calendar_step(workflow, task_data)
+            elif step == "auto_complete":
+                return self._execute_auto_complete_step(workflow)
+            elif step.startswith("complete_"):
+                return self._execute_completion_step(workflow, task_data, step)
             else:
                 workflow["data"][f"{step}_completed"] = True
                 self._save_workflow(workflow_id, workflow)
@@ -174,6 +238,65 @@ class SimpleWorkflowEngine:
         logger.info(f"Validated workflow {workflow['id']}: {validation_result}")
         return validation_result["valid"]
 
+    def _execute_calendar_step(
+        self, workflow: Dict[str, Any], task_data: Dict[str, Any]
+    ) -> bool:
+        task_type = task_data.get("task_type")
+
+        if task_type not in self.CALENDAR_TASK_TYPES:
+            logger.info(f"Task type {task_type} doesn't require calendar event")
+            return True
+
+        if workflow.get("calendar_event_id"):
+            logger.info(f"Calendar event already exists for workflow {workflow['id']}")
+            return True
+
+        task_id = task_data.get("id")
+        if task_id:
+            try:
+                task = Task.objects.get(id=task_id)
+                if task.calendar_event_id:
+                    logger.info(
+                        f"Calendar event already exists in database for task {task_id}"
+                    )
+                    workflow["calendar_event_id"] = task.calendar_event_id
+                    workflow["calendar_event_link"] = task.calendar_event_link
+                    self._save_workflow(workflow["id"], workflow)
+                    return True
+            except Task.DoesNotExist:
+                pass
+
+        try:
+            result = calendar_service.create_calendar_event(task_data)
+
+            if result["success"]:
+                workflow["data"]["calendar_result"] = result
+                workflow["calendar_event_id"] = result.get("event_id")
+                workflow["calendar_event_link"] = result.get("event_link")
+                workflow["data"]["calendar_created"] = True
+                self._save_workflow(workflow["id"], workflow)
+                logger.info(
+                    f"Created calendar event for workflow {workflow['id']}: {result['event_id']}"
+                )
+                return True
+            else:
+                workflow["data"]["calendar_result"] = result
+                workflow["data"]["calendar_created"] = False
+                self._save_workflow(workflow["id"], workflow)
+                logger.warning(
+                    f"Failed to create calendar event for workflow {workflow['id']}: {result.get('error', 'Unknown error')}"
+                )
+                return False
+
+        except Exception as e:
+            logger.error(
+                f"Error creating calendar event for workflow {workflow['id']}: {str(e)}"
+            )
+            workflow["data"]["calendar_error"] = str(e)
+            workflow["data"]["calendar_created"] = False
+            self._save_workflow(workflow["id"], workflow)
+            return False
+
     def _execute_priority_step(
         self, workflow: Dict[str, Any], task_data: Dict[str, Any]
     ) -> bool:
@@ -189,9 +312,8 @@ class SimpleWorkflowEngine:
             elif any(low in deadline_lower for low in ["next month", "nächsten monat"]):
                 priority = "low"
 
-        if task_data.get("task_type") in ["call", "meeting"]:
-            if priority == "medium":
-                priority = "high"
+        if task_data.get("task_type") in ["call", "meeting"] and priority == "medium":
+            priority = "high"
 
         workflow["data"]["priority"] = priority
         self._save_workflow(workflow["id"], workflow)
@@ -230,6 +352,7 @@ class SimpleWorkflowEngine:
             "message": f"New {task_data.get('task_type')} task: {task_data.get('action')}",
             "task_id": task_data.get("id"),
             "priority": workflow["data"].get("priority", "medium"),
+            "calendar_event": workflow.get("calendar_event_link"),
         }
 
         workflow["data"]["notification"] = notification
@@ -237,6 +360,49 @@ class SimpleWorkflowEngine:
         self._save_workflow(workflow["id"], workflow)
         logger.info(f"Notification prepared for workflow {workflow['id']}")
         return True
+
+    def _execute_auto_complete_step(self, workflow: Dict[str, Any]) -> bool:
+        task_type = workflow["task_data"].get("task_type")
+
+        if task_type in self.CALENDAR_TASK_TYPES:
+            if workflow.get("calendar_event_id") or workflow["data"].get(
+                "calendar_created"
+            ):
+                workflow["data"]["auto_completed"] = True
+                workflow["data"][
+                    "completion_message"
+                ] = f"{task_type} scheduled in calendar"
+                self._save_workflow(workflow["id"], workflow)
+                logger.info(
+                    f"Auto-completed {task_type} task for workflow {workflow['id']}"
+                )
+                return True
+            else:
+                if task_type in ["reminder"]:
+                    workflow["data"]["auto_completed"] = True
+                    workflow["data"][
+                        "completion_message"
+                    ] = f"{task_type} task completed without calendar"
+                    self._save_workflow(workflow["id"], workflow)
+                    logger.info(
+                        f"Auto-completed {task_type} task without calendar for workflow {workflow['id']}"
+                    )
+                    return True
+
+        workflow["data"]["auto_complete_failed"] = True
+        self._save_workflow(workflow["id"], workflow)
+        return False
+
+    def _execute_completion_step(
+        self, workflow: Dict[str, Any], task_data: Dict[str, Any], step: str
+    ) -> bool:
+        task_type = step.replace("complete_", "")
+        workflow["data"][f"{task_type}_pending"] = True
+        self._save_workflow(workflow["id"], workflow)
+        logger.info(
+            f"Waiting for manual completion of {task_type} task for workflow {workflow['id']}"
+        )
+        return False
 
     def get_workflow_status(self, workflow_id: str) -> Dict[str, Any]:
         workflow = self._load_workflow(workflow_id)
@@ -255,6 +421,8 @@ class SimpleWorkflowEngine:
             "completed_steps": workflow["completed_steps"],
             "total_steps": len(workflow["steps"]),
             "progress": len(workflow["completed_steps"]) / len(workflow["steps"]) * 100,
+            "calendar_event_id": workflow.get("calendar_event_id"),
+            "calendar_event_link": workflow.get("calendar_event_link"),
             "steps": workflow["steps"],
         }
 
@@ -273,7 +441,6 @@ class SimpleWorkflowEngine:
             return False
 
         workflow["data"].update(task_data)
-        workflow["data"][f"{task_name}_completed"] = True
 
         if task_name not in workflow["completed_steps"]:
             workflow["completed_steps"].append(task_name)
@@ -281,6 +448,7 @@ class SimpleWorkflowEngine:
         remaining_steps = [
             s for s in workflow["steps"] if s not in workflow["completed_steps"]
         ]
+
         if remaining_steps:
             workflow["current_step"] = remaining_steps[0]
             workflow["status"] = "pending"
@@ -293,60 +461,6 @@ class SimpleWorkflowEngine:
 
         logger.info(f"Completed user task {task_name} in workflow {workflow_id}")
         return True
-
-    def _update_task_status(self, workflow: Dict[str, Any]):
-        try:
-            task_id = workflow["task_data"].get("id")
-            if not task_id:
-                logger.warning(f"No task_id found in workflow {workflow['id']}")
-                return
-
-            task = Task.objects.get(id=task_id)
-
-            old_status = task.workflow_status
-            task.workflow_status = workflow["status"]
-            workflow_data = workflow.get("data", {})
-
-            changes_made = []
-
-            if (
-                "assigned_to" in workflow_data
-                and workflow_data["assigned_to"] != task.assigned_to
-            ):
-                old_assigned = task.assigned_to
-                task.assigned_to = workflow_data["assigned_to"]
-                changes_made.append(
-                    f"assigned_to: {old_assigned} -> {task.assigned_to}"
-                )
-
-            if (
-                "priority" in workflow_data
-                and workflow_data["priority"] != task.priority
-            ):
-                old_priority = task.priority
-                task.priority = workflow_data["priority"]
-                changes_made.append(f"priority: {old_priority} -> {task.priority}")
-
-            task.save()
-
-            if changes_made:
-                logger.info(
-                    f"Updated task {task_id}: status: {old_status} -> {task.workflow_status}, {', '.join(changes_made)}"
-                )
-            else:
-                logger.info(
-                    f"Updated task {task_id} status: {old_status} -> {task.workflow_status}"
-                )
-
-        except Task.DoesNotExist:
-            logger.error(f"Task {task_id} not found when updating status")
-        except Exception as e:
-            logger.error(
-                f"Error updating task status for workflow {workflow['id']}: {str(e)}"
-            )
-
-    def list_active_workflows(self) -> list:
-        return []
 
     def _save_workflow(self, workflow_id: str, workflow: Dict[str, Any]):
         cache_key = f"{self.CACHE_PREFIX}{workflow_id}"

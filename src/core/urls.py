@@ -21,6 +21,7 @@ from django.urls import path
 from tasks.views import (
     analyze_voice_text,
     bulk_process_tasks,
+    calendar_operations,
     complete_workflow_task_view,
     detect_language,
     extract_task_components,
@@ -57,4 +58,7 @@ urlpatterns = [
     ),
     path("bulk-process/", bulk_process_tasks, name="bulk_process_tasks"),
     path("statistics/", get_task_statistics, name="task_statistics"),
+    path(
+        "tasks/<int:task_id>/calendar/", calendar_operations, name="calendar_operations"
+    ),
 ]

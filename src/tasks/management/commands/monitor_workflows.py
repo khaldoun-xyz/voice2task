@@ -25,6 +25,20 @@ class Command(BaseCommand):
             try:
                 status = engine.get_workflow_status(task.workflow_id)
 
+                if task.task_type in ["meeting", "reminder"]:
+                    task_data = {
+                        "id": task.id,
+                        "task_type": task.task_type,
+                        "action": task.action,
+                        "person": task.person,
+                        "topic": task.topic,
+                        "deadline": task.deadline,
+                        "language": task.language,
+                    }
+                    spiff_result = workflow_engine.run(task_data)
+                    if spiff_result.get("calendar_event"):
+                        status["status"] = "completed"
+
                 if status["status"] != "not_found":
                     task.workflow_status = status["status"]
                     update_fields = ["assigned_to", "priority"]

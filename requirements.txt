@@ -1,6 +1,14 @@
+
 Django==5.1.2
-spacy==3.7.4
-en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.0/en_core_web_sm-3.7.0-py3-none-any.whl
 python-dotenv==1.0.0
 requests==2.31.0
+
+spacy==3.7.4
+en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.0/en_core_web_sm-3.7.0-py3-none-any.whl
+dateparser==1.1.8
+
 SpiffWorkflow==1.2.1
+
+google-api-python-client>=2.0.0
+google-auth-oauthlib>=0.4.0
+google-auth>=1.0.0

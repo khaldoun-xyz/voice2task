@@ -1,17 +1,19 @@
 # views.py
 import json
 import logging
+from datetime import timedelta
 
 from django.http import JsonResponse
 from django.shortcuts import render
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
+from .google_calendar_service import calendar_service
 from .models import Task
 from .simple_workflow import SimpleWorkflowEngine
 from .task_extractor import (
     InsuranceTaskHandler,
     LanguageDetector,
-    NLPProcessor,
     TaskComponents,
     TaskExtractor,
     extract_task_from_text,
@@ -19,6 +21,7 @@ from .task_extractor import (
 )
 
 logger = logging.getLogger(__name__)
+
 
 workflow_engine = SimpleWorkflowEngine()
 
@@ -80,7 +83,48 @@ def _create_task_dict(task):
         "assigned_to": task.assigned_to,
         "priority": task.priority,
         "created_at": task.created_at.isoformat(),
+        "calendar_event_id": task.calendar_event_id,
+        "calendar_event_link": task.calendar_event_link,
     }
+
+
+def _create_task_from_data(voice_text, task_data):
+    task = Task(
+        user="Ihssene",
+        voice_input=voice_text,
+        task_type=task_data["task_type"],
+        action=task_data["action"],
+        person=task_data["person"],
+        topic=task_data["topic"],
+        deadline=task_data["deadline"],
+        language=task_data["language"],
+    )
+    task.save()
+    return task
+
+
+def _process_task_workflow(task):
+    try:
+        if task.workflow_id:
+            logger.info(f"Task {task.id} already has workflow {task.workflow_id}")
+            return task.workflow_id
+
+        task_dict = _create_task_dict(task)
+        workflow_id = workflow_engine.create_task_workflow(task_dict)
+
+        if workflow_id:
+            task.refresh_from_db()
+            if not task.workflow_id:
+                task.workflow_id = workflow_id
+                task.workflow_status = "running"
+                task.save()
+
+        return workflow_id
+    except Exception as e:
+        logger.error(f"Error processing workflow for task {task.id}: {str(e)}")
+        task.workflow_status = "failed"
+        task.save()
+        return None
 
 
 def home(request):
@@ -104,15 +148,14 @@ def process_voice(request):
 
     try:
         voice_text = _extract_voice_text(request)
-
         if not voice_text:
             return JsonResponse(
                 {"status": "error", "message": "No voice text provided"}, status=400
             )
 
         logger.info(f"Processing voice input: {voice_text}")
-        task_data = extract_task_from_text(voice_text)
 
+        task_data = extract_task_from_text(voice_text)
         if "error" in task_data:
             logger.error(f"Error extracting task: {task_data['error']}")
             return JsonResponse(
@@ -123,26 +166,14 @@ def process_voice(request):
                 status=500,
             )
 
-        task = Task(
-            user="anonymous",
-            voice_input=voice_text,
-            task_type=task_data["task_type"],
-            action=task_data["action"],
-            person=task_data["person"],
-            topic=task_data["topic"],
-            deadline=task_data["deadline"],
-            language=task_data["language"],
-        )
-        task.save()
+        task = _create_task_from_data(voice_text, task_data)
 
-        task_dict = _create_task_dict(task)
-        workflow_id = workflow_engine.create_task_workflow(task_dict)
-
-        task.workflow_id = workflow_id
-        task.workflow_status = "running"
-        task.save()
-
-        workflow_engine._process_automatic_steps(workflow_id)
+        workflow_id = _process_task_workflow(task)
+        if not workflow_id:
+            return JsonResponse(
+                {"status": "error", "error": "Failed to create workflow"},
+                status=500,
+            )
 
         task.refresh_from_db()
 
@@ -170,6 +201,8 @@ def process_voice(request):
                     "feedback": feedback_message,
                     "workflow_id": workflow_id,
                     "workflow_status": task.workflow_status,
+                    "calendar_event_id": task.calendar_event_id,
+                    "calendar_event_link": task.calendar_event_link,
                 },
             }
         )
@@ -190,19 +223,15 @@ def analyze_voice_text(request):
 
     try:
         voice_text = _extract_voice_text(request)
-
         if not voice_text:
             return JsonResponse(
                 {"status": "error", "message": "No voice text provided"}, status=400
             )
 
         language = LanguageDetector.detect_language(voice_text)
-
         extractor = TaskExtractor(voice_text)
         task_components = extractor.extract_task()
-
         enhanced_task = InsuranceTaskHandler.enhance_task(task_components)
-
         feedback = generate_feedback_message(enhanced_task)
 
         return JsonResponse(
@@ -234,7 +263,6 @@ def detect_language(request):
 
     try:
         text = _extract_voice_text(request)
-
         if not text:
             return JsonResponse(
                 {"status": "error", "message": "No text provided"}, status=400
@@ -272,11 +300,11 @@ def extract_task_components(request):
 
     try:
         voice_text = _extract_voice_text(request)
-
         if not voice_text:
             return JsonResponse(
                 {"status": "error", "message": "No voice text provided"}, status=400
             )
+
         extractor = TaskExtractor(voice_text)
 
         components = {
@@ -294,7 +322,6 @@ def extract_task_components(request):
 
         task_type = extractor._determine_task_type(components["action"])
         components["task_type"] = task_type
-
         components["standardized_action"] = extractor._standardize_action(
             components["action"], task_type
         )
@@ -310,8 +337,12 @@ def extract_task_components(request):
 
 
 def workflow_status(request, workflow_id):
-    status = workflow_engine.get_workflow_status(workflow_id)
-    return JsonResponse(status)
+    try:
+        status = workflow_engine.get_workflow_status(workflow_id)
+        return JsonResponse(status)
+    except Exception as e:
+        logger.error(f"Error getting workflow status: {str(e)}")
+        return JsonResponse({"status": "error", "error": str(e)}, status=500)
 
 
 @csrf_exempt
@@ -322,7 +353,6 @@ def complete_workflow_task_view(request, workflow_id, task_name):
     try:
         task_data = json.loads(request.body) if request.body else {}
         success = workflow_engine.complete_user_task(workflow_id, task_name, task_data)
-
         return JsonResponse({"success": success})
     except Exception as e:
         logger.error(f"Error completing workflow task: {str(e)}")
@@ -348,6 +378,8 @@ def task_detail(request, task_id):
         workflow_status_data = None
         if task.workflow_id:
             workflow_status_data = workflow_engine.get_workflow_status(task.workflow_id)
+
+        analysis = None
         try:
             extractor = TaskExtractor(task.voice_input)
             task_components = extractor.extract_task()
@@ -363,7 +395,6 @@ def task_detail(request, task_id):
             }
         except Exception as e:
             logger.error(f"Error re-analyzing task {task_id}: {str(e)}")
-            analysis = None
 
         return render(
             request,
@@ -388,18 +419,36 @@ def update_task(request, task_id):
         data = json.loads(request.body)
 
         if "status" in data:
+            old_status = task.workflow_status
             new_status = data["status"]
+
+            if old_status == "completed" and new_status != "completed":
+                if task.calendar_event_id:
+                    logger.warning(
+                        f"Attempting to change completed task {task_id} with calendar event"
+                    )
+
             task.workflow_status = new_status
             task.save()
+
+            if task.workflow_id:
+                workflow = workflow_engine._load_workflow(task.workflow_id)
+                if workflow:
+                    workflow["status"] = new_status
+                    if new_status == "completed":
+                        workflow["current_step"] = None
+                    workflow_engine._save_workflow(task.workflow_id, workflow)
 
             return JsonResponse(
                 {
                     "status": "success",
                     "task_id": task.id,
+                    "old_status": old_status,
                     "new_status": new_status,
                     "workflow_status": task.workflow_status,
                 }
             )
+
         updatable_fields = [
             "action",
             "person",
@@ -455,11 +504,9 @@ def bulk_process_tasks(request):
             )
 
         results = []
-
         for i, voice_text in enumerate(voice_texts):
             try:
                 task_data = extract_task_from_text(voice_text)
-
                 if "error" in task_data:
                     results.append(
                         {
@@ -471,24 +518,9 @@ def bulk_process_tasks(request):
                     )
                     continue
 
-                task = Task(
-                    user="anonymous",
-                    voice_input=voice_text,
-                    task_type=task_data["task_type"],
-                    action=task_data["action"],
-                    person=task_data["person"],
-                    topic=task_data["topic"],
-                    deadline=task_data["deadline"],
-                    language=task_data["language"],
-                )
-                task.save()
+                task = _create_task_from_data(voice_text, task_data)
 
-                task_dict = _create_task_dict(task)
-                workflow_id = workflow_engine.create_task_workflow(task_dict)
-
-                task.workflow_id = workflow_id
-                task.workflow_status = "running"
-                task.save()
+                workflow_id = _process_task_workflow(task)
 
                 task_components = TaskComponents(**task_data)
                 feedback = generate_feedback_message(task_components)
@@ -506,6 +538,7 @@ def bulk_process_tasks(request):
                 )
 
             except Exception as e:
+                logger.error(f"Error processing bulk task {i}: {str(e)}")
                 results.append(
                     {
                         "index": i,
@@ -527,6 +560,8 @@ def bulk_process_tasks(request):
             }
         )
 
+    except json.JSONDecodeError:
+        return JsonResponse({"status": "error", "error": "Invalid JSON"}, status=400)
     except Exception as e:
         logger.exception("Error in bulk processing")
         return JsonResponse(
@@ -548,10 +583,6 @@ def get_task_statistics(request):
             count = Task.objects.filter(task_type=type_code).count()
             task_type_stats[type_name] = count
 
-        from datetime import datetime, timedelta
-
-        from django.utils import timezone
-
         week_ago = timezone.now() - timedelta(days=7)
         recent_tasks = Task.objects.filter(created_at__gte=week_ago).count()
 
@@ -572,3 +603,90 @@ def get_task_statistics(request):
         return JsonResponse(
             {"status": "error", "error": f"Statistics error: {str(e)}"}, status=500
         )
+
+
+@csrf_exempt
+def calendar_operations(request, task_id):
+    try:
+        task = Task.objects.get(id=task_id)
+
+        if request.method == "GET":
+            events = calendar_service.list_upcoming_events()
+            return JsonResponse({"events": events})
+
+        elif request.method == "POST":
+            if task.calendar_event_id:
+                return JsonResponse(
+                    {
+                        "success": True,
+                        "message": "Calendar event already exists",
+                        "event_id": task.calendar_event_id,
+                        "event_link": task.calendar_event_link,
+                        "duplicate": True,
+                    }
+                )
+
+            task_dict = _create_task_dict(task)
+            result = calendar_service.create_calendar_event(task_dict)
+
+            if result["success"]:
+
+                task.calendar_event_id = result.get("event_id")
+                task.calendar_event_link = result.get("event_link")
+
+                if task.workflow_status == "running" and task.workflow_id:
+
+                    workflow_status = workflow_engine.get_workflow_status(
+                        task.workflow_id
+                    )
+                    if workflow_status.get("status") == "completed":
+                        task.workflow_status = "completed"
+                elif not task.workflow_id:
+                    task.workflow_status = "completed"
+
+                task.save()
+
+                if task.workflow_id:
+                    workflow = workflow_engine._load_workflow(task.workflow_id)
+                    if workflow:
+                        workflow["calendar_event_id"] = result.get("event_id")
+                        workflow["calendar_event_link"] = result.get("event_link")
+                        workflow_engine._save_workflow(task.workflow_id, workflow)
+
+            return JsonResponse(result)
+
+        elif request.method == "DELETE":
+            if not task.calendar_event_id:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "message": "No calendar event associated with this task",
+                    },
+                    status=400,
+                )
+
+            result = calendar_service.delete_calendar_event(task.calendar_event_id)
+            if result["success"]:
+                task.calendar_event_id = None
+                task.calendar_event_link = None
+                task.save()
+
+                if task.workflow_id:
+                    workflow = workflow_engine._load_workflow(task.workflow_id)
+                    if workflow:
+                        workflow["calendar_event_id"] = None
+                        workflow["calendar_event_link"] = None
+                        workflow_engine._save_workflow(task.workflow_id, workflow)
+
+            return JsonResponse(result)
+
+        else:
+            return JsonResponse(
+                {"success": False, "message": "Method not allowed"}, status=405
+            )
+
+    except Task.DoesNotExist:
+        return JsonResponse({"success": False, "message": "Task not found"}, status=404)
+    except Exception as e:
+        logger.error(f"Calendar operation error: {str(e)}")
+        return JsonResponse({"success": False, "message": str(e)}, status=500)

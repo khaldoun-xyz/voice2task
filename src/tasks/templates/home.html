@@ -101,6 +101,11 @@
                                         {% if task.person %}<span>👤 {{ task.person }}</span>{% endif %}
                                         <span>📋 {{ task.task_type|default:"general" }}</span>
                                         <span>⏰ {{ task.deadline|default:"No deadline" }}</span>
+                                        {% if task.calendar_event_id %}
+                                            <span>📅 <a href="{{ task.get_calendar_link }}"
+    class="calendar-event-link"
+    target="_blank">Calendar Event</a></span>
+                                        {% endif %}
                                     </div>
                                     <div class="task-time">{{ task.created_at|date:"M d, Y H:i" }}</div>
                                 </div>
