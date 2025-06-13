@@ -1,13 +1,16 @@
-from django.core.management.base import BaseCommand
-from tasks.simple_workflow import SimpleWorkflowEngine
-from tasks.models import Task
-from core.workflows import TaskWorkflow
 import logging
+
+from django.core.management.base import BaseCommand
+
+from core.workflows import TaskWorkflow
+from tasks.models import Task
+from tasks.simple_workflow import SimpleWorkflowEngine
 
 logger = logging.getLogger(__name__)
 
+
 class Command(BaseCommand):
-    help = 'Monitor workflow status and update tasks'
+    help = "Monitor workflow status and update tasks"
 
     def handle(self, *args, **options):
         engine = SimpleWorkflowEngine()
@@ -15,32 +18,48 @@ class Command(BaseCommand):
 
         active_tasks = Task.objects.filter(
             workflow_id__isnull=False,
-            workflow_status__in=['running', 'pending', 'waiting_user']
+            workflow_status__in=["running", "pending", "waiting_user"],
         )
-        
+
         for task in active_tasks:
             try:
                 status = engine.get_workflow_status(task.workflow_id)
-                
-                if status['status'] != 'not_found':
-                    task.workflow_status = status['status']
-                    update_fields = ['assigned_to', 'priority']
+
+                if task.task_type in ["meeting", "reminder"]:
+                    task_data = {
+                        "id": task.id,
+                        "task_type": task.task_type,
+                        "action": task.action,
+                        "person": task.person,
+                        "topic": task.topic,
+                        "deadline": task.deadline,
+                        "language": task.language,
+                    }
+                    spiff_result = workflow_engine.run(task_data)
+                    if spiff_result.get("calendar_event"):
+                        status["status"] = "completed"
+
+                if status["status"] != "not_found":
+                    task.workflow_status = status["status"]
+                    update_fields = ["assigned_to", "priority"]
                     for field in update_fields:
-                        if field in status.get('data', {}):
-                            setattr(task, field, status['data'][field])
-                    
+                        if field in status.get("data", {}):
+                            setattr(task, field, status["data"][field])
+
                     task.save()
-                    
+
                     self.stdout.write(
                         self.style.SUCCESS(
                             f"Task {task.id} ({task.task_type}): {status['status']} "
                             f"- Progress: {status.get('progress', 0):.1f}%"
                         )
                     )
-                    
-                    if status.get('ready_tasks'):
+
+                    if status.get("ready_tasks"):
                         self.stdout.write(
-                            self.style.NOTICE(f"  Waiting for: {', '.join(status['ready_tasks'])}")
+                            self.style.NOTICE(
+                                f"  Waiting for: {', '.join(status['ready_tasks'])}"
+                            )
                         )
 
             except Exception as e:

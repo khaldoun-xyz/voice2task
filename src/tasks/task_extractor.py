@@ -1,730 +1,894 @@
 # task_extractor.py
-import re
-import spacy
 import logging
-from typing import Dict, Optional, Tuple, List, Set
+import re
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Dict, List, Optional, Set, Tuple
 
-# Configure logging
+import spacy
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class TaskComponents:
-    """Data class to store extracted task components."""
     action: str = ""
     person: str = ""
     topic: str = ""
     deadline: str = ""
-    language: str = "en"
+    language: str = "en-US"
     task_type: str = "general"
-    
+    original_text: str = ""
+
     def to_dict(self) -> Dict:
-        """Convert task components to dictionary."""
         return {
             "action": self.action,
             "person": self.person,
             "topic": self.topic,
             "deadline": self.deadline,
             "language": self.language,
-            "task_type": self.task_type
+            "task_type": self.task_type,
+            "original_text": self.original_text,
         }
-
-
-class LanguageDetector:
-    """Detect language from input text."""
-    
-    # German keywords that indicate the text might be in German
-    GERMAN_KEYWORDS = {
-        # Task verbs
-        "anrufen", "telefonieren", "senden", "schicken", "erstellen", "planen", 
-        "organisieren", "vereinbaren", "einrichten", "einstellen", "erledigen",
-        "ruf", "rufe", "schreibe", "erstelle", "plane", "notiere", "dokumentiere",
-        
-        # Task nouns
-        "termin", "besprechung", "sitzung", "anruf", "email", "nachricht",
-        "aufgabe", "treffen", "konferenz", "meeting", "erinnerung", "folgetermin",
-        
-        # Insurance terms
-        "versicherung", "angebot", "beratung", "schaden", "kunde", "police",
-        
-        # Common prepositions and articles
-        "über", "mit", "für", "wegen", "zum", "zur", "bis", "am", "um",
-        "der", "die", "das", "dem", "den", "herr", "frau"
-    }
-    
-    @classmethod
-    def detect_language(cls, text: str) -> str:
-        """
-        Detect language of input text.
-        
-        Args:
-            text: Input text to analyze
-            
-        Returns:
-            Language code ('en' or 'de')
-        """
-        # Convert to lowercase for case-insensitive matching
-        text_lower = text.lower()
-        
-        # Split into words and check for German keywords
-        words = re.findall(r'\b\w+\b', text_lower)
-        german_word_count = sum(1 for word in words if word in cls.GERMAN_KEYWORDS)
-        
-        # Check for German-specific patterns
-        has_german_patterns = any([
-            "herr " in text_lower,
-            "frau " in text_lower,
-            " bis " in text_lower,
-            " bitte " in text_lower,
-            " kannst du " in text_lower,
-            " möchte " in text_lower
-        ])
-        
-        # If more than 1 German keyword or specific patterns, classify as German
-        if german_word_count > 1 or has_german_patterns:
-            return "de"
-        return "en"
 
 
 class NLPProcessor:
-    """Process text using spaCy NLP models."""
-    
-    # Dictionary to store loaded spaCy models
     _nlp_models = {}
-    
-    # Mapping of language codes to spaCy model names
-    _model_names = {
-        "en": "en_core_web_sm",
-        "de": "de_core_news_sm"
-    }
-    
+    _model_names = {"en": "en_core_web_sm", "de": "de_core_news_sm"}
+
     @classmethod
     def get_nlp_model(cls, language: str):
-        """
-        Get or load spaCy model for the specified language.
-        
-        Args:
-            language: Language code ('en' or 'de')
-            
-        Returns:
-            Loaded spaCy model
-        """
-        if language not in cls._nlp_models:
+        base_lang = language.split("-")[0].lower()
+
+        if base_lang not in cls._nlp_models:
             try:
-                cls._nlp_models[language] = spacy.load(cls._model_names[language])
-                logger.info(f"Loaded spaCy model for {language}")
+                model_name = cls._model_names.get(base_lang, "en_core_web_sm")
+                cls._nlp_models[base_lang] = spacy.load(model_name)
+                logger.info(f"Loaded spaCy model for {base_lang}")
             except OSError:
-                logger.info(f"Downloading spaCy model for {language}")
+                logger.info(f"Downloading spaCy model for {base_lang}")
                 import subprocess
-                subprocess.run(["python", "-m", "spacy", "download", cls._model_names[language]], 
-                              check=True)
-                cls._nlp_models[language] = spacy.load(cls._model_names[language])
-        
-        return cls._nlp_models[language]
-    
+
+                subprocess.run(
+                    ["python", "-m", "spacy", "download", model_name], check=True
+                )
+                cls._nlp_models[base_lang] = spacy.load(model_name)
+        return cls._nlp_models[base_lang]
+
     @classmethod
     def process_text(cls, text: str, language: str):
-        """
-        Process text with spaCy.
-        
-        Args:
-            text: Text to process
-            language: Language code ('en' or 'de')
-            
-        Returns:
-            spaCy Doc object
-        """
         nlp = cls.get_nlp_model(language)
         return nlp(text)
 
-# We'll continue from where the code in paste-2.txt left off
 
-# Finishing the task_extractor.py file
 class TaskExtractor:
-    """Extract task components from text."""
-    
-    # Phrases to ignore at the beginning of the command (introductory phrases)
     INTRODUCTORY_PHRASES = {
         "en": [
-            "i want", "i need", "please", "can you", "could you", "would you", 
-            "i would like", "i'd like", "i wish", "remind me to", "make sure to",
-            "don't forget to", "please create", "please make", "create a task",
-            "create a reminder", "remind me"
+            "i want",
+            "i need",
+            "please",
+            "can you",
+            "could you",
+            "would you",
+            "i would like",
+            "i'd like",
+            "remind me to",
+            "create a task",
+            "remind me",
+            "add a task",
+            "set a reminder",
+            "schedule a",
+            "make a",
+            "set up a",
         ],
         "de": [
-            "ich will", "ich möchte", "ich wünsche", "bitte", "könntest du", "kannst du",
-            "würdest du", "ich hätte gerne", "erstelle eine aufgabe", "erstelle einen termin",
-            "erstelle eine erinnerung", "erinnere mich", "vergiss nicht zu", "denk daran"
-        ]
+            "ich will",
+            "ich möchte",
+            "bitte",
+            "könntest du",
+            "kannst du",
+            "erstelle eine aufgabe",
+            "erinnere mich",
+            "vergiss nicht zu",
+            "füge eine aufgabe hinzu",
+            "setze eine erinnerung",
+            "plane einen",
+            "mache einen",
+            "richte ein",
+            "hallo",
+        ],
     }
-    
-    # Insurance-specific action verbs mapped to standardized tasks
-    INSURANCE_ACTIONS = {
+
+    ACTION_PATTERNS = {
         "en": {
-            "call": ["call", "phone", "dial", "ring", "call back", "callback"],
-            "email": ["email", "mail", "message", "write", "send an email", "send a message"],
-            "meet": ["meet", "appointment", "schedule", "arrange", "setup", "organize", "book", "consultation"],
-            "create": ["create", "make", "build", "prepare", "draft", "document"],
-            "send": ["send", "deliver", "share", "forward", "offer"],
-            "remind": ["remind", "reminder", "follow-up", "follow up", "schedule a reminder"],
-            "document": ["document", "note", "record", "write down", "take note"],
-            "followup": ["follow up", "check back", "contact again"]
+            "call": [
+                "call",
+                "phone",
+                "dial",
+                "ring",
+                "contact",
+                "reach out",
+                "get in touch",
+            ],
+            "email": [
+                "email",
+                "mail",
+                "message",
+                "write to",
+                "send message",
+                "compose",
+                "write",
+            ],
+            "meeting": [
+                "meet",
+                "meeting",
+                "appointment",
+                "schedule",
+                "arrange",
+                "book",
+                "organize",
+                "plan meeting",
+            ],
+            "reminder": [
+                "remind",
+                "reminder",
+                "follow up",
+                "follow-up",
+                "check back",
+                "touch base",
+            ],
+            "create": [
+                "create",
+                "make",
+                "build",
+                "prepare",
+                "draft",
+                "develop",
+                "generate",
+            ],
+            "review": ["review", "check", "examine", "analyze", "look at"],
+            "update": ["update", "modify", "change", "adjust", "revise"],
         },
         "de": {
-            "anrufen": ["anrufen", "telefonieren", "kontaktieren", "rückruf", "zurückrufen"],
-            "email": ["emailen", "mailen", "schreiben", "nachricht senden", "schicken"],
-            "treffen": ["treffen", "termin", "vereinbaren", "planen", "organisieren", "beratung"],
-            "erstellen": ["erstellen", "anlegen", "vorbereiten", "entwerfen", "dokumentieren"],
-            "senden": ["senden", "schicken", "teilen", "weiterleiten", "angebot"],
-            "erinnern": ["erinnern", "erinnerung", "folgetermin", "nachfassen"],
-            "dokumentieren": ["dokumentieren", "notieren", "aufschreiben", "festhalten"],
-            "nachfassen": ["nachfassen", "nachverfolgen", "wieder kontaktieren"]
-        }
+            "anrufen": [
+                "anrufen",
+                "rufen",
+                "telefonieren",
+                "kontaktieren",
+                "erreichen",
+                "anrufe",
+            ],
+            "email": [
+                "schreiben",
+                "mailen",
+                "nachricht",
+                "verfassen",
+                "e-mail",
+                "email",
+            ],
+            "termin": [
+                "termin",
+                "meeting",
+                "besprechung",
+                "vereinbaren",
+                "planen",
+                "buchen",
+                "organisieren",
+            ],
+            "erinnerung": [
+                "erinnern",
+                "erinnerung",
+                "nachfassen",
+                "nachverfolgen",
+                "folgeup",
+            ],
+            "erstellen": [
+                "erstellen",
+                "vorbereiten",
+                "entwickeln",
+                "bereiten",
+                "erstelle",
+                "bereite",
+                "entwickle",
+                "machen",
+                "mache",
+            ],
+            "prüfen": [
+                "prüfen",
+                "überprüfen",
+                "kontrollieren",
+                "analysieren",
+                "checken",
+                "schauen",
+            ],
+            "aktualisieren": [
+                "aktualisieren",
+                "ändern",
+                "anpassen",
+                "modifizieren",
+                "updaten",
+                "update",
+            ],
+        },
     }
-    
-    # Task type mapping - maps actions to standardized task types
+
     TASK_TYPE_MAPPING = {
         "en": {
             "call": "call",
             "email": "email",
-            "meet": "meeting",
-            "remind": "reminder",
-            "document": "document",
-            "followup": "followup",
-            "send offer": "offer",
-            "send": "email",
-            "create": "general"
+            "meeting": "meeting",
+            "reminder": "reminder",
+            "create": "general",
+            "review": "review",
+            "update": "update",
         },
         "de": {
             "anrufen": "call",
             "email": "email",
-            "treffen": "meeting",
-            "erinnern": "reminder",
-            "dokumentieren": "document",
-            "nachfassen": "followup",
-            "angebot senden": "offer",
-            "senden": "email",
-            "erstellen": "general"
-        }
-    }
-    
-    # Titles and honorifics for person detection
-    TITLES = {
-        "en": ["mr", "mr.", "mrs", "mrs.", "ms", "ms.", "dr", "dr.", "miss", "prof", "prof."],
-        "de": ["herr", "frau", "dr", "dr.", "prof", "prof."]
-    }
-    
-    # Insurance-specific topics
-    INSURANCE_TOPICS = {
-        "en": ["insurance", "policy", "claim", "coverage", "premium", "renewal", "quote", "accident", 
-               "damage", "liability", "car insurance", "home insurance", "health insurance", 
-               "life insurance", "disability", "occupational disability"],
-        "de": ["versicherung", "police", "schaden", "deckung", "prämie", "verlängerung", "angebot", 
-               "unfall", "schaden", "haftpflicht", "autoversicherung", "hausratsversicherung", 
-               "krankenversicherung", "lebensversicherung", "berufsunfähigkeit"]
-    }
-    
-    # Words indicating topic follows
-    TOPIC_MARKERS = {
-        "en": ["about", "regarding", "concerning", "on the subject of", "on", "for", "related to", "topic"],
-        "de": ["über", "betreffend", "bezüglich", "zum thema", "zu", "für", "im zusammenhang mit", "thema"]
-    }
-    
-    # Words indicating deadline follows
-    DEADLINE_MARKERS = {
-        "en": ["by", "until", "before", "on", "at", "due", "in", "next", "this", "tomorrow", "today"],
-        "de": ["bis", "bis zum", "vor", "am", "um", "fällig", "in", "nächste", "nächsten", "diese", "morgen", "heute"]
+            "termin": "meeting",
+            "erinnerung": "reminder",
+            "erstellen": "general",
+            "prüfen": "review",
+            "aktualisieren": "update",
+        },
     }
 
-    # Time frame indicators
-    TIME_FRAMES = {
+    STANDARD_ACTIONS = {
         "en": {
-            "today": "today",
-            "tomorrow": "tomorrow",
-            "next week": "next week",
-            "next month": "next month",
-            "in a week": "in a week",
-            "in a month": "in a month",
-            "in 6 months": "in 6 months",
-            "in 3 months": "in 3 months"
+            "call": "Call",
+            "email": "Email",
+            "meeting": "Schedule meeting with",
+            "reminder": "Follow up with",
+            "general": "Task",
+            "review": "Review",
+            "update": "Update",
         },
         "de": {
-            "heute": "today",
-            "morgen": "tomorrow",
-            "nächste woche": "next week",
-            "nächsten monat": "next month",
-            "in einer woche": "in a week",
-            "in einem monat": "in a month",
-            "in 6 monaten": "in 6 months",
-            "in 3 monaten": "in 3 months"
-        }
+            "call": "Anruf mit",
+            "email": "E-Mail an",
+            "meeting": "Termin mit",
+            "reminder": "Nachfassen bei",
+            "general": "Aufgabe für",
+            "review": "Prüfen",
+            "update": "Aktualisieren",
+        },
     }
-    
-    def __init__(self, text: str):
-        """
-        Initialize task extractor with input text.
-        
-        Args:
-            text: Input text to extract task from
-        """
-        self.text = text
-        self.language = LanguageDetector.detect_language(text)
+
+    TITLES = {
+        "en": [
+            "mr",
+            "mr.",
+            "mrs",
+            "mrs.",
+            "ms",
+            "ms.",
+            "dr",
+            "dr.",
+            "miss",
+            "prof",
+            "prof.",
+            "sir",
+            "madam",
+        ],
+        "de": ["herr", "frau", "dr", "dr.", "prof", "prof.", "fräulein"],
+    }
+
+    TEAM_INDICATORS = {
+        "en": [
+            "team",
+            "group",
+            "department",
+            "staff",
+            "crew",
+            "committee",
+            "board",
+            "panel",
+        ],
+        "de": [
+            "team",
+            "gruppe",
+            "abteilung",
+            "personal",
+            "mannschaft",
+            "ausschuss",
+            "gremium",
+        ],
+    }
+
+    GENERIC_PERSON_INDICATORS = {
+        "en": [
+            "client",
+            "customer",
+            "colleague",
+            "manager",
+            "supervisor",
+            "assistant",
+            "partner",
+            "vendor",
+            "supplier",
+            "contractor",
+            "representative",
+            "agent",
+            "contact",
+            "lead",
+            "prospect",
+            "stakeholder",
+        ],
+        "de": [
+            "kunde",
+            "kunden",
+            "kundin",
+            "kollege",
+            "kollegin",
+            "manager",
+            "managerin",
+            "vorgesetzter",
+            "vorgesetzte",
+            "assistent",
+            "assistentin",
+            "partner",
+            "partnerin",
+            "lieferant",
+            "auftragnehmer",
+            "vertreter",
+            "vertreterin",
+            "agent",
+            "agentin",
+            "kontakt",
+            "ansprechpartner",
+            "ansprechpartnerin",
+            "interessent",
+            "interessentin",
+        ],
+    }
+
+    GERMAN_PATTERNS = {
+        "call_wegen": r"rufen\s+sie\s+(?:bitte\s+)?(?:(herr|frau|dr\.?)\s+)?([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)*)\s+wegen\s+([^,.;!?\n]+?)\s+an",
+        "email_bezueglich": r"schreiben\s+sie\s+(?:bitte\s+)?(?:an\s+)?(?:(herr|frau|dr\.?)\s+)?([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)*)\s+(?:bezüglich|betreffend|über)\s+([^,.;!?\n]+)",
+        "meeting_mit": r"termin\s+mit\s+(?:(herr|frau|dr\.?)\s+)?([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)*)\s+(?:für|bezüglich)\s+([^,.;!?\n]+)",
+        "action_person": r"(anrufen|schreiben|kontaktieren|erreichen)\s+(?:sie\s+)?(?:bitte\s+)?(?:(herr|frau|dr\.?)\s+)?([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)*)",
+        "action_generic": r"(anrufen|schreiben|kontaktieren|erreichen)\s+(?:sie\s+)?(?:bitte\s+)?(?:den|die|das)?\s*(kunde|kunden|kundin|team|gruppe|kollege|kollegin)",
+    }
+
+    DEADLINE_MARKERS = {
+        "en": [
+            "by",
+            "until",
+            "before",
+            "on",
+            "at",
+            "due",
+            "in",
+            "next",
+            "this",
+            "tomorrow",
+            "today",
+        ],
+        "de": [
+            "bis",
+            "bis zum",
+            "vor",
+            "am",
+            "um",
+            "fällig",
+            "in",
+            "nächste",
+            "nächsten",
+            "morgen",
+            "heute",
+        ],
+    }
+
+    TIME_PATTERNS = {
+        "en": [
+            (
+                r"\b(?:at\s+)?(\d{1,2}):(\d{2})\s*(?:am|pm)?\b",
+                lambda m: f"{m.group(1)}:{m.group(2)}",
+            ),
+            (
+                r"\b(?:at\s+)?(\d{1,2})\s*(am|pm)\b",
+                lambda m: f"{m.group(1)} {m.group(2)}",
+            ),
+            (r"\btoday\b", "today"),
+            (r"\btomorrow\b", "tomorrow"),
+            (r"\bnext\s+week\b", "next week"),
+            (r"\bthis\s+(morning|afternoon|evening)\b", lambda m: f"this {m.group(1)}"),
+        ],
+        "de": [
+            (
+                r"\bum\s+(\d{1,2}):(\d{2})\s*uhr\b",
+                lambda m: f"{m.group(1)}:{m.group(2)}",
+            ),
+            (r"\bum\s+(\d{1,2})\s*uhr\b", lambda m: f"{m.group(1)}:00"),
+            (r"\bheute\b", "heute"),
+            (r"\bmorgen\b", "morgen"),
+            (r"\bnächste\s+woche\b", "nächste Woche"),
+            (
+                r"\bnächsten\s+(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)\b",
+                lambda m: f"nächsten {m.group(1)}",
+            ),
+            (r"\bbis\s+nächste\s+woche\b", "nächste Woche"),
+        ],
+    }
+
+    def __init__(self, text: str, language: str = "en-US"):
+        if not language or language not in ["en-US", "de-DE"]:
+            language = "en-US"
+
+        self.original_text = text
+        self.language = language
+        self.base_lang = language.split("-")[0].lower()
         self.cleaned_text = self._clean_text(text)
         self.doc = NLPProcessor.process_text(self.cleaned_text, self.language)
-        
+
     def _clean_text(self, text: str) -> str:
-        """
-        Clean text by removing introductory phrases.
-        
-        Args:
-            text: Original text
-            
-        Returns:
-            Cleaned text
-        """
-        text_lower = text.lower()
-        
-        # Try to remove introductory phrases
-        for phrase in self.INTRODUCTORY_PHRASES[self.language]:
-            if text_lower.startswith(phrase):
-                return text[len(phrase):].strip()
-                
-        # Check for task creation commands
-        task_creation_patterns = {
-            "en": [r"(?:please\s+)?create\s+(?:a\s+)?(?:task|reminder)\s*:?\s*(.+)", 
-                   r"(?:please\s+)?set\s+(?:up|a)\s+(?:task|reminder)\s*:?\s*(.+)"],
-            "de": [r"(?:bitte\s+)?erstelle\s+(?:eine\s+)?(?:aufgabe|erinnerung)\s*:?\s*(.+)", 
-                   r"(?:bitte\s+)?richte\s+(?:eine\s+)?(?:aufgabe|erinnerung)\s+ein\s*:?\s*(.+)"]
-        }
-        
-        for pattern in task_creation_patterns[self.language]:
-            match = re.match(pattern, text_lower)
-            if match:
-                return match.group(1).strip()
-                
-        return text
-        
-    def extract_task(self) -> TaskComponents:
-        """
-        Extract all task components from the text.
-        
-        Returns:
-            TaskComponents object containing extracted data
-        """
-        task = TaskComponents(language=self.language)
-        task.action = self._extract_action()
-        task.task_type = self._determine_task_type(task.action)
-        task.person = self._extract_person()
-        task.topic = self._extract_topic()
-        task.deadline = self._extract_deadline()
-        task.action = self._standardize_action(task.action, task.task_type)
-        
-        return task
-    
-    def _extract_action(self) -> str:
-        text_lower = self.cleaned_text.lower()
-        
-        for action, variants in self.INSURANCE_ACTIONS[self.language].items():
-            for variant in variants:
-                if variant in text_lower:
-                    return action
-        
-        action_patterns = {
-            "en": [
-                r"(?:please\s+)?call(?:\s+back)?\s+",
-                r"(?:please\s+)?send\s+",
-                r"(?:please\s+)?email\s+",
-                r"(?:please\s+)?remind\s+(?:me\s+)?(?:about|to)\s+",
-                r"(?:please\s+)?document\s+(?:that)?\s+",
-                r"(?:please\s+)?create\s+(?:a\s+)?follow-?up\s+",
-                r"(?:please\s+)?schedule\s+(?:a\s+)?"
-            ],
-            "de": [
-                r"(?:bitte\s+)?(?:rufe?|rufen sie)\s+",
-                r"(?:bitte\s+)?sende\s+",
-                r"(?:bitte\s+)?schicke\s+",
-                r"(?:bitte\s+)?erinnere\s+(?:mich\s+)?(?:an|zu)\s+",
-                r"(?:bitte\s+)?dokumentiere\s+(?:dass)?\s+",
-                r"(?:bitte\s+)?erstelle\s+(?:einen\s+)?folgetermin\s+",
-                r"(?:bitte\s+)?plane\s+(?:einen\s+)?"
-            ]
-        }
-        
-        for pattern in action_patterns[self.language]:
-            match = re.search(pattern, text_lower)
-            if match:
-                action_word = re.sub(r'(?:please\s+|\?|\s+)', '', match.group(0)).strip()
-                
-                if self.language == "en":
-                    if "call" in action_word or "phone" in action_word:
-                        return "call"
-                    elif "send" in action_word or "email" in action_word:
-                        return "send"
-                    elif "remind" in action_word:
-                        return "remind"
-                    elif "document" in action_word:
-                        return "document"
-                    elif "follow" in action_word:
-                        return "followup"
-                    elif "schedule" in action_word:
-                        return "meet"
-                else:
-                    if "ruf" in action_word:
-                        return "anrufen"
-                    elif "send" in action_word or "schick" in action_word:
-                        return "senden"
-                    elif "erinner" in action_word:
-                        return "erinnern"
-                    elif "dokumentier" in action_word:
-                        return "dokumentieren"
-                    elif "folge" in action_word:
-                        return "nachfassen"
-                    elif "plan" in action_word:
-                        return "treffen"
+        text_lower = text.lower().strip()
 
-        root_verb = None
-        for token in self.doc:
-            if token.pos_ == "VERB" and token.dep_ in ["ROOT", "root"]:
-                root_verb = token.lemma_.lower()
-                break
-        
-        if not root_verb:
-            for token in self.doc:
-                if token.pos_ == "VERB":
-                    root_verb = token.lemma_.lower()
+        if self.base_lang == "de":
+            greetings = ["hallo", "guten tag", "guten morgen", "guten abend"]
+            for greeting in greetings:
+                if text_lower.startswith(greeting):
+                    text = text[len(greeting) :].strip()
+                    text_lower = text.lower()
                     break
-        
-        if not root_verb:
-            return "Task" if self.language == "en" else "Aufgabe"
-            
-        for action, variants in self.INSURANCE_ACTIONS[self.language].items():
-            for variant in variants:
-                if variant in root_verb or root_verb in variant:
-                    return action
-                    
-        return root_verb
-    
-    def _determine_task_type(self, action: str) -> str:
-        task_type_mapping = self.TASK_TYPE_MAPPING[self.language]
 
-        if action in task_type_mapping:
-            return task_type_mapping[action]
+        intro_phrases = self.INTRODUCTORY_PHRASES.get(
+            self.base_lang, self.INTRODUCTORY_PHRASES["en"]
+        )
+        for phrase in sorted(intro_phrases, key=len, reverse=True):
+            if text_lower.startswith(phrase):
+                text = text[len(phrase) :].strip()
+                text_lower = text.lower()
+                break
 
-        for key, task_type in task_type_mapping.items():
-            if key in action or action in key:
-                return task_type
+        polite_endings = {
+            "en": ["please", "thank you", "thanks", "appreciate it"],
+            "de": ["bitte", "danke", "vielen dank", "danke schön"],
+        }.get(self.base_lang, ["please", "thank you"])
 
-        return "general"
-        
-    def _standardize_action(self, action: str, task_type: str) -> str:
-        standard_actions = {
-            "en": {
-                "call": "Call",
-                "email": "Email",
-                "meeting": "Schedule meeting with",
-                "reminder": "Reminder for",
-                "document": "Document",
-                "followup": "Follow up with",
-                "offer": "Send offer to",
-                "general": "Task"
-            },
-            "de": {
-                "call": "Anrufen",
-                "email": "E-Mail an",
-                "meeting": "Termin mit",
-                "reminder": "Erinnerung für",
-                "document": "Dokumentieren",
-                "followup": "Nachfassen bei",
-                "offer": "Angebot senden an",
-                "general": "Aufgabe"
-            }
+        for ending in polite_endings:
+            if text_lower.endswith(ending):
+                text = text[: -len(ending)].strip()
+                text_lower = text.lower()
+                break
+
+        return text
+
+    def extract_task(self) -> TaskComponents:
+        task = TaskComponents(language=self.language, original_text=self.original_text)
+
+        if self.base_lang == "de":
+            extracted = self._extract_using_german_patterns()
+            if extracted:
+                task.task_type = extracted.get("task_type", "general")
+                task.person = extracted.get("person", "")
+                task.topic = extracted.get("topic", "")
+            else:
+                task.task_type, main_verb = self._determine_task_type_and_verb()
+                task.person = self._extract_person()
+                task.topic = self._extract_topic(main_verb, task.person)
+        else:
+            task.task_type, main_verb = self._determine_task_type_and_verb()
+            task.person = self._extract_person()
+            task.topic = self._extract_topic(main_verb, task.person)
+
+        task.action = self._standardize_action(task.task_type)
+        task.deadline = self._extract_deadline()
+        self._post_process_task(task)
+        return task
+
+    def _extract_using_german_patterns(self) -> Optional[Dict]:
+        text = self.cleaned_text.lower()
+
+        for pattern_name, pattern in self.GERMAN_PATTERNS.items():
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                if (
+                    pattern_name.startswith("call_")
+                    or pattern_name.startswith("email_")
+                    or pattern_name.startswith("meeting_")
+                ):
+                    title = match.group(1) if match.group(1) else ""
+                    person_name = match.group(2)
+                    topic = match.group(3).strip() if len(match.groups()) > 2 else ""
+
+                    person = self._format_german_person(title, person_name)
+                    topic = self._clean_german_topic(topic)
+
+                    task_type = pattern_name.split("_")[0]
+                    if task_type == "call":
+                        task_type = "call"
+                    elif task_type == "email":
+                        task_type = "email"
+                    elif task_type == "meeting":
+                        task_type = "meeting"
+
+                    return {"task_type": task_type, "person": person, "topic": topic}
+
+                elif pattern_name == "action_person":
+                    action_verb = match.group(1)
+                    title = match.group(2) if match.group(2) else ""
+                    person_name = match.group(3)
+
+                    person = self._format_german_person(title, person_name)
+                    task_type = self._get_task_type_from_german_verb(action_verb)
+                    topic = self._extract_topic_after_person(text, person_name)
+
+                    return {"task_type": task_type, "person": person, "topic": topic}
+
+                elif pattern_name == "action_generic":
+                    action_verb = match.group(1)
+                    entity_type = match.group(2)
+
+                    person = self._standardize_german_entity(entity_type)
+                    task_type = self._get_task_type_from_german_verb(action_verb)
+                    topic = self._extract_topic_after_entity(text, entity_type)
+
+                    return {"task_type": task_type, "person": person, "topic": topic}
+
+        return None
+
+    def _standardize_german_entity(self, entity_type: str) -> str:
+        entity_map = {
+            "kunde": "Kunde",
+            "kunden": "Kunden",
+            "kundin": "Kundin",
+            "team": "Team",
+            "gruppe": "Gruppe",
+            "kollege": "Kollege",
+            "kollegin": "Kollegin",
         }
-        
-        return standard_actions[self.language].get(task_type, action.capitalize())
-    
+        return entity_map.get(entity_type.lower(), entity_type.capitalize())
+
+    def _get_task_type_from_german_verb(self, verb: str) -> str:
+        verb_mapping = {
+            "anrufen": "call",
+            "rufen": "call",
+            "schreiben": "email",
+            "kontaktieren": "general",
+            "erreichen": "general",
+        }
+        return verb_mapping.get(verb.lower(), "general")
+
+    def _format_german_person(self, title: str, name: str) -> str:
+        if title:
+            title = title.capitalize()
+            if title in ["Frau", "Herr"]:
+                return f"{title} {name}"
+            elif title.startswith("Dr"):
+                return f"Dr. {name}"
+        return name
+
+    def _clean_german_topic(self, topic: str) -> str:
+        if not topic:
+            return ""
+
+        temporal_patterns = [
+            r"\bbis\s+nächste\s+woche.*",
+            r"\bnächste\s+woche.*",
+            r"\bmorgen.*",
+            r"\bheute.*",
+            r"\bam\s+\w+.*",
+            r"\bum\s+\d+.*",
+        ]
+
+        for pattern in temporal_patterns:
+            topic = re.sub(pattern, "", topic, flags=re.IGNORECASE).strip()
+
+        topic = re.sub(
+            r"\s+(an|von|mit|zu|für|der|die|das|bis)$", "", topic, flags=re.IGNORECASE
+        )
+        topic = re.sub(r"\b(ihres?|seiner?|ihrer?)\s+", "", topic, flags=re.IGNORECASE)
+
+        return topic.strip(" ,.;:")
+
+    def _extract_topic_after_person(self, text: str, person_name: str) -> str:
+        person_pos = text.lower().find(person_name.lower())
+        if person_pos == -1:
+            return ""
+
+        remaining_text = text[person_pos + len(person_name) :].strip()
+        topic_indicators = ["wegen", "bezüglich", "betreffend", "über", "für"]
+
+        for indicator in topic_indicators:
+            indicator_pos = remaining_text.lower().find(indicator)
+            if indicator_pos != -1:
+                topic_text = remaining_text[indicator_pos + len(indicator) :].strip()
+                return self._clean_german_topic(topic_text)
+
+        return ""
+
+    def _extract_topic_after_entity(self, text: str, entity_type: str) -> str:
+        entity_pos = text.lower().find(entity_type.lower())
+        if entity_pos == -1:
+            return ""
+
+        remaining_text = text[entity_pos + len(entity_type) :].strip()
+        topic_indicators = ["wegen", "bezüglich", "betreffend", "über", "für"]
+
+        for indicator in topic_indicators:
+            indicator_pos = remaining_text.lower().find(indicator)
+            if indicator_pos != -1:
+                topic_text = remaining_text[indicator_pos + len(indicator) :].strip()
+                return self._clean_german_topic(topic_text)
+
+        return ""
+
     def _extract_person(self) -> str:
         text = self.cleaned_text
         text_lower = text.lower()
-        titles = self.TITLES[self.language]
 
-        for title in titles:
-            title_pattern = r'\b' + re.escape(title) + r'\.?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)'
-            match = re.search(title_pattern, text)
-            if match:
-                return f"{title.capitalize()}. {match.group(1)}"
+        generic_indicators = self.GENERIC_PERSON_INDICATORS.get(self.base_lang, [])
+        team_indicators = self.TEAM_INDICATORS.get(self.base_lang, [])
+        all_indicators = generic_indicators + team_indicators
 
-        for ent in self.doc.ents:
-            if ent.label_ in ["PERSON", "PER", "ORG"]:
-
-                entity_position = ent.start_char
-                if entity_position < 10 and len(self.doc) > ent.end:
-                    next_token = self.doc[ent.end]
-                    if next_token.pos_ == "VERB":
-                        continue
-                return ent.text
-        
-        team_patterns = {
-            "en": r'\b(?:the|with|to|for)\s+(\w+\s*\w*)\b',
-            "de": r'\b(?:das|dem|die|der|mit|für|an)\s+(\w+\s*\w*)\b'
-        }
-
-        skip_words = {
-            "en": {"me", "you", "topic", "subject", "task", "reminder", "note", "problem", "issue", "subject", "meeting"},
-            "de": {"mich", "dir", "thema", "aufgabe", "erinnerung", "notiz", "problem", "betreff", "treffen"}
-        }
-        
-        matches = re.finditer(team_patterns[self.language], text_lower)
-        for match in matches:
-            potential_person = match.group(1).strip()
-            if potential_person not in skip_words[self.language]:
-                if self.language == "en":
-                    return "the " + potential_person
-                else:
-                    article = text_lower[match.start():match.start() + 3].strip()
-                    if article in ["der", "die", "das", "dem"]:
-                        return article + " " + potential_person
-                    else:
-                        return "der/die " + potential_person
-        
-        return ""
-    
-    def _extract_topic(self) -> str:
-        text = self.cleaned_text
-        text_lower = text.lower()
-
-        topic_markers = self.TOPIC_MARKERS[self.language]
-        for marker in topic_markers:
-            pattern = r'\b' + re.escape(marker) + r'\b\s*([^,.;:!?]*)'
+        for indicator in all_indicators:
+            pattern = rf"\b(?:der|die|das|den|dem|the|a|an)?\s*{re.escape(indicator)}\b"
             match = re.search(pattern, text_lower)
             if match:
-                topic_text = match.group(1).strip()
-                
+                return indicator.capitalize()
 
-                deadline_markers = self.DEADLINE_MARKERS[self.language]
-                for d_marker in deadline_markers:
-                    d_pattern = r'\b' + re.escape(d_marker) + r'\b.*$'
-                    topic_text = re.sub(d_pattern, '', topic_text).strip()
-                
-                topic_text = re.sub(r'\b(and|or|but|und|oder|aber|mit|for|für)\s*$', '', topic_text).strip()
-                return topic_text
+        titles = self.TITLES.get(self.base_lang, self.TITLES["en"])
+        title_pattern = (
+            r"\b("
+            + "|".join(re.escape(title) + r"\.?" for title in titles)
+            + r")\s+([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)*)"
+        )
+        match = re.search(title_pattern, text, re.IGNORECASE)
+        if match:
+            title = match.group(1).capitalize()
+            if not title.endswith(".") and title.lower() in ["dr", "prof"]:
+                title += "."
+            return f"{title} {match.group(2)}"
 
-        insurance_topics = self.INSURANCE_TOPICS[self.language]
-        for topic in insurance_topics:
-            if topic in text_lower:
+        for ent in self.doc.ents:
+            if ent.label_ in ["PERSON", "PER"] and len(ent.text.split()) <= 2:
+                ent_end = ent.end_char
+                remaining_text = text[ent_end : ent_end + 50].lower().strip()
+                if not re.match(
+                    r"^\s*(tomorrow|today|at|on|by|am|pm|morgen|heute|\d)",
+                    remaining_text,
+                ):
+                    return ent.text
 
-                topic_idx = text_lower.index(topic)
-                start_idx = max(0, topic_idx - 20)
-                end_idx = min(len(text_lower), topic_idx + len(topic) + 20)
-                context = text_lower[start_idx:end_idx]
-                
-
-                context = re.sub(r'^[^a-z]*', '', context)
-                context = re.sub(r'[^a-z]*$', '', context)
-                
-
-                for d_marker in self.DEADLINE_MARKERS[self.language]:
-                    d_pattern = r'\b' + re.escape(d_marker) + r'\b.*$'
-                    context = re.sub(d_pattern, '', context).strip()
-                
-                if context:
-                    return context
-                return topic
-        
-        action = self._extract_action()
-        person = self._extract_person()
-        
-        action_person_pattern = ''
-        if action:
-            action_variants = []
-            for variants in self.INSURANCE_ACTIONS[self.language].values():
-                action_variants.extend(variants)
-
-            for variant in action_variants:
-                if variant in text_lower:
-                    action_person_pattern += r'\b' + re.escape(variant) + r'\b'
-                    break
-        
-        if person:
-            clean_person = re.escape(person.lower())
-            if action_person_pattern:
-                action_person_pattern += r'.*?' + clean_person
-            else:
-                action_person_pattern = r'\b' + clean_person
-                
-        if action_person_pattern:
-            match = re.search(action_person_pattern, text_lower)
-            if match:
-                remaining_text = text_lower[match.end():].strip()
-                for d_marker in self.DEADLINE_MARKERS[self.language]:
-                    d_pattern = r'\b' + re.escape(d_marker) + r'\b.*$'
-                    remaining_text = re.sub(d_pattern, '', remaining_text).strip()
-
-                remaining_text = re.sub(r'^(about|regarding|concerning|über|betreffend|bezüglich|zu|zum)\s+', '', remaining_text)
-                
-                if len(remaining_text.split()) <= 8 and len(remaining_text.split()) > 0:
-                    return remaining_text
-        
         return ""
-    
+
+    def _determine_task_type_and_verb(self) -> Tuple[str, Optional[str]]:
+        text_lower = self.cleaned_text.lower()
+        patterns = self.ACTION_PATTERNS.get(self.base_lang, self.ACTION_PATTERNS["en"])
+        mapping = self.TASK_TYPE_MAPPING.get(
+            self.base_lang, self.TASK_TYPE_MAPPING["en"]
+        )
+
+        main_verb = None
+
+        for action_type, keywords in patterns.items():
+            for keyword in keywords:
+                if re.search(rf"\b{re.escape(keyword)}\b", text_lower):
+                    main_verb = keyword
+                    return mapping.get(action_type, "general"), main_verb
+
+        for token in self.doc:
+            if token.pos_ == "VERB" and not token.is_stop:
+                lemma = token.lemma_.lower()
+                for action_type, keywords in patterns.items():
+                    if lemma in keywords or token.text.lower() in keywords:
+                        main_verb = token.text
+                        return mapping.get(action_type, "general"), main_verb
+
+        return "general", main_verb
+
+    def _standardize_action(self, task_type: str) -> str:
+        actions = self.STANDARD_ACTIONS.get(self.base_lang, self.STANDARD_ACTIONS["en"])
+        return actions.get(task_type, "Task" if self.base_lang == "en" else "Aufgabe")
+
+    def _extract_topic(self, main_verb: Optional[str], person: str) -> str:
+        text = self.cleaned_text.lower()
+
+        topic_indicators = {
+            "en": ["about", "regarding", "concerning", "for", "on", "re:"],
+            "de": ["wegen", "bezüglich", "betreffend", "über", "für", "zu"],
+        }.get(self.base_lang, ["about", "regarding"])
+
+        for indicator in topic_indicators:
+            pattern = rf"\b{re.escape(indicator)}\s+([^,.;!?\n]+)"
+            match = re.search(pattern, text)
+            if match:
+                topic = match.group(1).strip()
+                temporal_words = [
+                    "today",
+                    "tomorrow",
+                    "next week",
+                    "this week",
+                    "heute",
+                    "morgen",
+                    "nächste woche",
+                ]
+                for word in temporal_words:
+                    topic = re.sub(rf"\b{word}.*", "", topic, flags=re.IGNORECASE)
+                topic = topic.strip(" ,.;:")
+                if topic:
+                    return topic
+
+        return ""
+
     def _extract_deadline(self) -> str:
         text = self.cleaned_text
-        text_lower = text.lower()
-        
 
-        date_entity = None
         for ent in self.doc.ents:
-            if ent.label_ == "DATE" or ent.label_ == "TIME":
-                date_entity = ent.text
-                break
-        
-        if date_entity:
-            return date_entity
+            if ent.label_ in ["DATE", "TIME"]:
+                return ent.text
 
-        time_frames = self.TIME_FRAMES[self.language]
-        for time_frame, standardized in time_frames.items():
-            if time_frame in text_lower:
-                return standardized
-        
-        deadline_markers = self.DEADLINE_MARKERS[self.language]
-        
-        for marker in deadline_markers:
-            pattern = r'\b' + re.escape(marker) + r'\b\s*([^,.;:!?]*)'
-            match = re.search(pattern, text_lower)
+        time_patterns = self.TIME_PATTERNS.get(self.base_lang, self.TIME_PATTERNS["en"])
+        for pattern, handler in time_patterns:
+            match = re.search(pattern, text.lower())
             if match:
-                deadline_text = match.group(1).strip()
+                return handler if isinstance(handler, str) else handler(match)
 
-                deadline_doc = NLPProcessor.process_text(deadline_text, self.language)
-                for ent in deadline_doc.ents:
-                    if ent.label_ == "DATE" or ent.label_ == "TIME":
-                        return ent.text
-                
-                if len(deadline_text.split()) <= 5:
-                    return deadline_text
+        deadline_markers = self.DEADLINE_MARKERS.get(
+            self.base_lang, self.DEADLINE_MARKERS["en"]
+        )
+        for marker in deadline_markers:
+            pattern = rf"\b{re.escape(marker)}\s+([^,.;!?\n]+)"
+            match = re.search(pattern, text.lower())
+            if match:
+                deadline = match.group(1).strip()
+                deadline = re.sub(
+                    r"\b(please|bitte|an).*", "", deadline, flags=re.IGNORECASE
+                )
+                return deadline.strip()
 
-        time_period_patterns = {
-            "en": r'\bin\s+(\d+)\s+(day|days|week|weeks|month|months|year|years)\b',
-            "de": r'\bin\s+(\d+)\s+(tag|tagen|woche|wochen|monat|monaten|jahr|jahren)\b'
-        }
-        
-        match = re.search(time_period_patterns[self.language], text_lower)
-        if match:
-            number = match.group(1)
-            unit = match.group(2)
-            return f"in {number} {unit}"
-        
         return ""
 
+    def _post_process_task(self, task: TaskComponents):
+        task.person = task.person.strip(" ,.;:") if task.person else ""
+        task.topic = task.topic.strip(" ,.;:") if task.topic else ""
+        task.deadline = task.deadline.strip(" ,.;:") if task.deadline else ""
+
+        if task.person and task.topic:
+            person_name = task.person.split()[-1]
+            if person_name.lower() in task.topic.lower():
+                task.topic = re.sub(
+                    re.escape(person_name), "", task.topic, flags=re.IGNORECASE
+                ).strip(" ,.;:")
+
+        if task.task_type == "general" and task.topic:
+            topic_lower = task.topic.lower()
+            type_keywords = {
+                "meeting": ["meeting", "termin", "besprechung"],
+                "call": ["call", "anruf", "phone"],
+                "email": ["email", "mail", "message", "nachricht"],
+            }
+
+            for new_type, keywords in type_keywords.items():
+                if any(word in topic_lower for word in keywords):
+                    task.task_type = new_type
+                    task.action = self._standardize_action(new_type)
+                    break
 
 
 class InsuranceTaskHandler:
-
-    INSURANCE_TASK_TYPES = {
-        "callback": "call",
-        "consultation": "meeting",
-        "offer": "offer",
-        "follow-up": "followup",
-        "claim": "document"
-    }
-    
-
     INSURANCE_TERMS = {
         "en": {
             "car insurance": "auto policy",
             "home insurance": "homeowners policy",
-            "home contents": "contents insurance",
-            "occupational disability": "disability insurance",
             "consultation": "insurance consultation",
-            "claim": "insurance claim"
+            "claim": "insurance claim",
+            "policy": "insurance policy",
+            "renewal": "policy renewal",
+            "quote": "insurance quote",
+            "application": "insurance application",
         },
         "de": {
-            "autoversicherung": "KFZ Police",
-            "hausratsversicherung": "Hausrat Versicherung",
-            "berufsunfähigkeit": "BU Versicherung",
+            "autoversicherung": "KFZ-Versicherung",
+            "hausratversicherung": "Hausratversicherung",
             "beratung": "Versicherungsberatung",
-            "schaden": "Versicherungsfall"
-        }
+            "schaden": "Versicherungsfall",
+            "police": "Versicherungspolice",
+            "policenverlängerung": "Policeverlängerung",
+            "verlängerung": "Policeverlängerung",
+            "angebot": "Versicherungsangebot",
+            "antrag": "Versicherungsantrag",
+            "versicherungsanalyse": "Versicherungsanalyse",
+            "bericht": "Bericht",
+            "analyse": "Analyse",
+            "update": "Update",
+        },
     }
-    
+
     @classmethod
     def enhance_task(cls, task: TaskComponents) -> TaskComponents:
-        if task.topic:
-            terms = cls.INSURANCE_TERMS[task.language]
-            for term, standard in terms.items():
-                if term.lower() in task.topic.lower():
-                    task.topic = standard
-                    break
-        
+        if not task.topic:
+            return task
 
-        text_lower = task.topic.lower()
-        for key_term, task_type in cls.INSURANCE_TASK_TYPES.items():
-            if key_term in text_lower:
-                task.task_type = task_type
+        base_lang = task.language.split("-")[0].lower()
+        terms = cls.INSURANCE_TERMS.get(base_lang, cls.INSURANCE_TERMS["en"])
+
+        topic_lower = task.topic.lower()
+        for term, standard in terms.items():
+            if term in topic_lower:
+                task.topic = standard
                 break
-        
 
-        if "claim" in text_lower and task.action.lower() in ["document", "dokumentieren"]:
-            task.task_type = "document"
-            if task.language == "en":
-                task.action = "Create claim file"
-            else:
-                task.action = "Schadenakte anlegen"
-        
         return task
 
 
-def extract_task_from_text(text: str) -> Dict:
+def extract_task_from_text(text: str, language: str = "en-US") -> Dict:
     try:
-        extractor = TaskExtractor(text)
-        task_components = extractor.extract_task()
-        
-        # Apply insurance-specific enhancements
-        enhanced_task = InsuranceTaskHandler.enhance_task(task_components)
+        if not text or not isinstance(text, str):
+            raise ValueError("Input text must be a non-empty string")
 
-        return enhanced_task.to_dict()
-    except Exception as e:
-        logging.error(f"Error extracting task: {str(e)}")
+        extractor = TaskExtractor(text, language)
+        task = extractor.extract_task()
+        enhanced_task = InsuranceTaskHandler.enhance_task(task)
+
         return {
-            "action": "",
-            "person": "",
-            "topic": "",
-            "deadline": "",
-            "language": "en",
-            "task_type": "general",
-            "error": str(e)
+            "task_type": enhanced_task.task_type,
+            "action": enhanced_task.action,
+            "person": enhanced_task.person,
+            "topic": enhanced_task.topic,
+            "deadline": enhanced_task.deadline,
+            "language": enhanced_task.language,
+            "original_text": enhanced_task.original_text,
+            "status": "success",
         }
-
+    except Exception as e:
+        logger.error(f"Error extracting task from text: {str(e)}", exc_info=True)
+        return {"error": str(e), "status": "error", "original_text": text}
 
 
 def generate_feedback_message(task: TaskComponents) -> str:
-    if task.language == "en":
-        message = f"Task created: {task.action}"
+    base_lang = task.language.split("-")[0].lower()
+
+    if base_lang == "en":
+        parts = [f"Task created: {task.action}"]
+
         if task.person:
-            message += f" with {task.person}"
+            parts.append(
+                f"with {task.person}"
+                if task.action.lower().startswith(("call", "email", "meet", "schedule"))
+                else f"for {task.person}"
+            )
+
         if task.topic:
-            message += f" about {task.topic}"
+            parts.append(f"regarding {task.topic}")
+
         if task.deadline:
-            message += f" - Due {task.deadline}"
+            parts.append(f"(Due: {task.deadline})")
+
+        return " ".join(parts)
     else:
-        message = f"Aufgabe erstellt: {task.action}"
+        parts = [f"Aufgabe erstellt: {task.action}"]
+
         if task.person:
-            message += f" mit {task.person}"
+            parts.append(f"{task.person}")
+
         if task.topic:
-            message += f" über {task.topic}"
+            parts.append(f"betreffend {task.topic}")
+
         if task.deadline:
-            message += f" - Fällig {task.deadline}"
-    
-    return message
+            parts.append(f"(Fällig: {task.deadline})")
+
+        return " ".join(parts)
 
 
-def format_task_for_database(task: TaskComponents, voice_input: str, user: str = "anonymous") -> Dict:
+def format_task_for_database(
+    task: TaskComponents, input_method: str = "text", user: str = "anonymous"
+) -> Dict:
+    created_at = datetime.now().isoformat()
+
     return {
         "user": user,
-        "voice_input": voice_input,
+        "input_method": input_method,
+        "original_text": task.original_text,
         "task_type": task.task_type,
         "action": task.action,
         "person": task.person,
         "topic": task.topic,
         "deadline": task.deadline,
-        "language": task.language
+        "language": task.language,
+        "created_at": created_at,
+        "status": "pending",
+        "workflow_id": f"task_{int(datetime.now().timestamp())}_{task.task_type}",
     }

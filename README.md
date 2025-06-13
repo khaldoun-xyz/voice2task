@@ -23,6 +23,7 @@ A Django application that converts voice commands into structured tasks using na
 2. Install dependencies
 pip install -r requirements.txt
 python -m spacy download en_core_web_sm
+python -m spacy download de_core_news_sm
 3. Set up database
 python manage.py makemigrations
 python manage.py migrate
