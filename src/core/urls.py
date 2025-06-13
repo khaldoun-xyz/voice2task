@@ -19,11 +19,9 @@ from django.contrib import admin
 from django.urls import path
 
 from tasks.views import (
-    analyze_voice_text,
     bulk_process_tasks,
     calendar_operations,
     complete_workflow_task_view,
-    detect_language,
     extract_task_components,
     get_task_statistics,
     home,
@@ -51,8 +49,6 @@ urlpatterns = [
     path("tasks/", task_list, name="task_list"),
     path("task/<int:task_id>/", update_task, name="update_task"),
     path("task/<int:task_id>/detail/", task_detail, name="task_detail"),
-    path("analyze-text/", analyze_voice_text, name="analyze_voice_text"),
-    path("detect-language/", detect_language, name="detect_language"),
     path(
         "extract-components/", extract_task_components, name="extract_task_components"
     ),

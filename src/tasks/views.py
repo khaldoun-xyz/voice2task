@@ -13,7 +13,6 @@ from .models import Task
 from .simple_workflow import SimpleWorkflowEngine
 from .task_extractor import (
     InsuranceTaskHandler,
-    LanguageDetector,
     TaskComponents,
     TaskExtractor,
     extract_task_from_text,
@@ -21,7 +20,6 @@ from .task_extractor import (
 )
 
 logger = logging.getLogger(__name__)
-
 
 workflow_engine = SimpleWorkflowEngine()
 
@@ -153,9 +151,10 @@ def process_voice(request):
                 {"status": "error", "message": "No voice text provided"}, status=400
             )
 
-        logger.info(f"Processing voice input: {voice_text}")
+        language = request.POST.get("language", "en-US")
+        logger.info(f"Processing voice input in {language}: {voice_text}")
 
-        task_data = extract_task_from_text(voice_text)
+        task_data = extract_task_from_text(voice_text, language=language)
         if "error" in task_data:
             logger.error(f"Error extracting task: {task_data['error']}")
             return JsonResponse(
@@ -215,83 +214,6 @@ def process_voice(request):
 
 
 @csrf_exempt
-def analyze_voice_text(request):
-    if request.method != "POST":
-        return JsonResponse(
-            {"status": "error", "message": "Only POST requests are allowed"}, status=405
-        )
-
-    try:
-        voice_text = _extract_voice_text(request)
-        if not voice_text:
-            return JsonResponse(
-                {"status": "error", "message": "No voice text provided"}, status=400
-            )
-
-        language = LanguageDetector.detect_language(voice_text)
-        extractor = TaskExtractor(voice_text)
-        task_components = extractor.extract_task()
-        enhanced_task = InsuranceTaskHandler.enhance_task(task_components)
-        feedback = generate_feedback_message(enhanced_task)
-
-        return JsonResponse(
-            {
-                "status": "success",
-                "analysis": {
-                    "original_text": voice_text,
-                    "cleaned_text": extractor.cleaned_text,
-                    "detected_language": language,
-                    "extracted_components": enhanced_task.to_dict(),
-                    "feedback_message": feedback,
-                },
-            }
-        )
-
-    except Exception as e:
-        logger.exception("Error analyzing voice text")
-        return JsonResponse(
-            {"status": "error", "error": f"Analysis error: {str(e)}"}, status=500
-        )
-
-
-@csrf_exempt
-def detect_language(request):
-    if request.method != "POST":
-        return JsonResponse(
-            {"status": "error", "message": "Only POST requests are allowed"}, status=405
-        )
-
-    try:
-        text = _extract_voice_text(request)
-        if not text:
-            return JsonResponse(
-                {"status": "error", "message": "No text provided"}, status=400
-            )
-
-        detected_language = LanguageDetector.detect_language(text)
-
-        return JsonResponse(
-            {
-                "status": "success",
-                "data": {
-                    "text": text,
-                    "detected_language": detected_language,
-                    "language_name": (
-                        "German" if detected_language == "de" else "English"
-                    ),
-                },
-            }
-        )
-
-    except Exception as e:
-        logger.exception("Error detecting language")
-        return JsonResponse(
-            {"status": "error", "error": f"Language detection error: {str(e)}"},
-            status=500,
-        )
-
-
-@csrf_exempt
 def extract_task_components(request):
     if request.method != "POST":
         return JsonResponse(
@@ -305,12 +227,13 @@ def extract_task_components(request):
                 {"status": "error", "message": "No voice text provided"}, status=400
             )
 
-        extractor = TaskExtractor(voice_text)
+        language = request.POST.get("language", "en-US")
+        extractor = TaskExtractor(voice_text, language=language)
 
         components = {
             "original_text": voice_text,
             "cleaned_text": extractor.cleaned_text,
-            "detected_language": extractor.language,
+            "language": language,
             "action": extractor._extract_action(),
             "person": extractor._extract_person(),
             "topic": extractor._extract_topic(),
@@ -381,7 +304,7 @@ def task_detail(request, task_id):
 
         analysis = None
         try:
-            extractor = TaskExtractor(task.voice_input)
+            extractor = TaskExtractor(task.voice_input, language=task.language)
             task_components = extractor.extract_task()
             enhanced_task = InsuranceTaskHandler.enhance_task(task_components)
 
@@ -506,7 +429,8 @@ def bulk_process_tasks(request):
         results = []
         for i, voice_text in enumerate(voice_texts):
             try:
-                task_data = extract_task_from_text(voice_text)
+                language = data.get("language", "en-US")
+                task_data = extract_task_from_text(voice_text, language=language)
                 if "error" in task_data:
                     results.append(
                         {
@@ -630,12 +554,10 @@ def calendar_operations(request, task_id):
             result = calendar_service.create_calendar_event(task_dict)
 
             if result["success"]:
-
                 task.calendar_event_id = result.get("event_id")
                 task.calendar_event_link = result.get("event_link")
 
                 if task.workflow_status == "running" and task.workflow_id:
-
                     workflow_status = workflow_engine.get_workflow_status(
                         task.workflow_id
                     )

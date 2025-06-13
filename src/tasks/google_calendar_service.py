@@ -1,3 +1,4 @@
+# google_calendar_service.py
 import json
 import logging
 import os
@@ -69,6 +70,21 @@ class GoogleCalendarService:
         "saturday": 5,
         "sun": 6,
         "sunday": 6,
+        "mo": 0,
+        "montag": 0,
+        "di": 1,
+        "dienstag": 1,
+        "mi": 2,
+        "mittwoch": 2,
+        "do": 3,
+        "donnerstag": 3,
+        "fr": 4,
+        "freitag": 4,
+        "sa": 5,
+        "samstag": 5,
+        "sonnabend": 5,
+        "so": 6,
+        "sonntag": 6,
     }
 
     def __init__(self):
@@ -192,8 +208,8 @@ class GoogleCalendarService:
         logger.info(f"Time components extracted: {time_components}")
 
         date_patterns = [
-            r"(\d{1,2})(?:st|nd|rd|th)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)",
-            r"(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?",
+            r"(\d{1,2})(?:st|nd|rd|th)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|jan(?:uar)?|feb(?:ruar)?|mär(?:z)?|apr(?:il)?|mai|jun(?:i)?|jul(?:i)?|aug(?:ust)?|sep(?:tember)?|okt(?:ober)?|nov(?:ember)?|dez(?:ember)?)",
+            r"(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|jan(?:uar)?|feb(?:ruar)?|mär(?:z)?|apr(?:il)?|mai|jun(?:i)?|jul(?:i)?|aug(?:ust)?|sep(?:tember)?|okt(?:ober)?|nov(?:ember)?|dez(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?",
         ]
 
         for pattern in date_patterns:
@@ -286,13 +302,15 @@ class GoogleCalendarService:
 
     def _parse_weekday(self, text: str) -> Optional[Tuple[str, bool]]:
         weekday_match = re.search(
-            r"(?:by\s+)?(?:on\s+)?(mon|tues?|wed|thur?s?|fri|sat|sun)(?:day)?", text
+            r"(?:by\s+)?(?:on\s+)?(mon|tues?|wed|thur?s?|fri|sat|sun|mo|di|mi|do|fr|sa|so)(?:day|ntag|enstag|ttwoch|nnerstag|reitag|mstag|nntag)?",
+            text,
+            re.IGNORECASE,
         )
         if not weekday_match:
             return None
 
-        weekday_abbrev = weekday_match.group(1)
-        is_by_deadline = "by " in text[: weekday_match.start()]
+        weekday_abbrev = weekday_match.group(1).lower()
+        is_by_deadline = "by " in text[: weekday_match.start()].lower()
 
         weekday_map = {
             "mon": "mon",
@@ -305,9 +323,16 @@ class GoogleCalendarService:
             "fri": "fri",
             "sat": "sat",
             "sun": "sun",
+            "mo": "mo",
+            "di": "di",
+            "mi": "mi",
+            "do": "do",
+            "fr": "fr",
+            "sa": "sa",
+            "so": "so",
         }
 
-        normalized = weekday_map.get(weekday_abbrev.lower())
+        normalized = weekday_map.get(weekday_abbrev)
         return (normalized, is_by_deadline) if normalized else None
 
     def _parse_time_expression(self, time_str: str) -> Optional[Tuple[int, int]]:
